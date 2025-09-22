@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: Christoph Komanns, Florian Maurer
+#
+# SPDX-License-Identifier: MIT
+
+__pycache__/
+*.py[cod]
+*$py.class
+*.orig
+*.egg-info/
+*.swp
+
+data

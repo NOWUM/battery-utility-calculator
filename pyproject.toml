@@ -1,0 +1,78 @@
+# SPDX-FileCopyrightText: Christoph Komanns, Florian Maurer
+#
+# SPDX-License-Identifier: MIT
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "battery-utility-calculator"
+version = "0.1.0"
+description = ""
+authors = [{ name = "Florian Maurer", email = "maurer@fh-aachen.de"}, { name = "Christoph Komanns", email = "komanns@fh-aachen.de"}]
+license = {text = "MIT"}
+readme = "README.md"
+keywords = ["battery", "utility", "price signal", "flexibility", "simulation"]
+
+classifiers=[
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+requires-python = ">=3.10"
+dependencies = [
+    "argcomplete >=3.1.4",
+    "pandas >=2.0.0",
+    "pyomo >=6.8.0",
+    "highspy",
+]
+
+[project.optional-dependencies]
+test = [
+    "ruff >=0.4.9",
+    "pytest >=7.2.2",
+    "pytest-cov >=4.1.0",
+]
+
+[project.urls]
+Homepage = "https://assume-project.de/"
+Repository = "https://github.com/nowum/battery-utility-calculator"
+Issues = "https://github.com/nowum/battery-utility-calculator/issues"
+
+[tool.setuptools]
+packages = {find = {}}
+
+[tool.ruff]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "G", "PIE"]
+ignore = ["E501", "G004", "E731"]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = [
+    "I001", # allow unsorted imports in __init__.py
+    "F401", # allow unused imports in __init__.py
+]
+"tests/*" = [
+    "S101", # allow assert statements for pytest
+    "ARG",  # allow unused arguments for pytest fixtures
+    "F841", # allow unused local variables
+]
+
+[tool.pytest]
+testpaths = "tests"
+
+[tool.coverage.run]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+# https://stackoverflow.com/a/5850364
+exclude_lines = ["if __name__ == .__main__.:"]

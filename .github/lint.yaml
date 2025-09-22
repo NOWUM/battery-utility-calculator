@@ -1,0 +1,75 @@
+# SPDX-FileCopyrightText: Christoph Komanns, Florian Maurer
+#
+# SPDX-License-Identifier: MIT
+
+# This workflow will install Python dependencies, run tests and lint with a variety of Python versions
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
+
+name: Tests
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  jupyter:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+    - uses: actions/checkout@v5
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v6
+      with:
+        python-version: ${{ matrix.python-version }}
+        cache: 'pip'
+        cache-dependency-path: '**/pyproject.toml'
+    - name: Run Jupyter notebooks
+      run: |
+        pip install -e .
+        jupyter nbconvert --to notebook --execute --ExecutePreprocessor.timeout=60 --output output.ipynb 02_automated_run_example.ipynb
+        jupyter nbconvert --to notebook --execute --ExecutePreprocessor.timeout=60 --output output.ipynb 03_custom_unit_example.ipynb
+  test:
+
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.12", "3.13"]
+
+    steps:
+    - uses: actions/checkout@v5
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v6
+      with:
+        python-version: ${{ matrix.python-version }}
+        cache: 'pip'
+        cache-dependency-path: '**/pyproject.toml'
+
+    - name: Install dependencies
+      run: |
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        python -m pip install -e .[test]
+
+    - name: Run pre-commit hooks
+      uses: pre-commit/action@v3.0.1
+      with:
+        extra_args: --all-files --show-diff-on-failure
+
+    - name: Test with pytest
+      run: |
+        pytest
+
+    - name: Upload tests results
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results-${{ matrix.python-version }}
+        path: |
+          coverage.xml
+          result.xml
