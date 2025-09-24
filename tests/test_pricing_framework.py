@@ -4,12 +4,12 @@
 
 import pandas as pd
 
-from battery_utility_calculator.pricing_framework import PricingFramework, Storage
+from battery_utility_calculator.battery_utility_calculator import BatteryUtilityCalculator, Storage
 
 
 def test_pricing_framework_baseline():
     # buying 1 kWh for 1 €/kWh should equal to 3€ total
-    pricer = PricingFramework(
+    calculator = BatteryUtilityCalculator(
         storage=Storage(id=0, c_rate=1, volume=0, efficiency=1),
         prices=pd.DataFrame(
             {
@@ -22,13 +22,13 @@ def test_pricing_framework_baseline():
         solar_generation=pd.Series([0, 0, 0]),
         demand=pd.Series([1, 1, 1]),
     )
-    pricer.optimize(solver="highs")
-    assert pricer.model.objective() == -3
+    calculator.optimize(solver="highs")
+    assert calculator.model.objective() == -3
 
 
 def test_pricing_framework_opti_storage():
     # buying 2 kWh for 0€/kWh and storing 1 kWh of this should equal 1€ total
-    pricer = PricingFramework(
+    calculator = BatteryUtilityCalculator(
         storage=Storage(id=0, c_rate=1, volume=1, efficiency=1),
         prices=pd.DataFrame(
             {
@@ -41,8 +41,8 @@ def test_pricing_framework_opti_storage():
         solar_generation=pd.Series([0, 0, 0]),
         demand=pd.Series([1, 1, 1]),
     )
-    pricer.optimize(solver="highs")
-    assert pricer.model.objective() == -1
+    calculator.optimize(solver="highs")
+    assert calculator.model.objective() == -1
 
 
 def test_pricing_framework_opti_storage_2():
@@ -50,7 +50,7 @@ def test_pricing_framework_opti_storage_2():
     # on timestep=0, we can buy for 0€/kWh and should buy 3kWh
     # as we use 2 kWh during timestep=0 and use 1 kWh for timestep=1
     # total cost should be 3*0 + 1*1 + 2*1 = 3
-    pricer = PricingFramework(
+    calculator = BatteryUtilityCalculator(
         storage=Storage(id=0, c_rate=1, volume=1, efficiency=1),
         prices=pd.DataFrame(
             {
@@ -63,13 +63,13 @@ def test_pricing_framework_opti_storage_2():
         solar_generation=pd.Series([0, 0, 0]),
         demand=pd.Series([2, 2, 2]),
     )
-    pricer.optimize(solver="highs")
-    assert pricer.model.objective() == -3
+    calculator.optimize(solver="highs")
+    assert calculator.model.objective() == -3
 
 
 def test_pricing_framework_selling_pv():
     # here we should gain 1€ from selling pv
-    pricer = PricingFramework(
+    calculator = BatteryUtilityCalculator(
         storage=Storage(id=0, c_rate=1, volume=0, efficiency=1),
         prices=pd.DataFrame(
             {
@@ -82,15 +82,15 @@ def test_pricing_framework_selling_pv():
         solar_generation=pd.Series([1, 0, 0]),
         demand=pd.Series([0, 0, 0]),
     )
-    pricer.optimize(solver="highs")
-    assert pricer.model.objective() == 1
+    calculator.optimize(solver="highs")
+    assert calculator.model.objective() == 1
 
 
 def test_pricing_framework_selling_pv_w_storage():
     # same as above, but we can store PV and sell at
     # timestep=1 instead of timestep=0, as we can get 2€/kWh
     # in timestep=1
-    pricer = PricingFramework(
+    calculator = BatteryUtilityCalculator(
         storage=Storage(id=0, c_rate=1, volume=1, efficiency=1),
         prices=pd.DataFrame(
             {
@@ -103,11 +103,11 @@ def test_pricing_framework_selling_pv_w_storage():
         solar_generation=pd.Series([1, 0, 0]),
         demand=pd.Series([0, 0, 0]),
     )
-    pricer.optimize(solver="highs")
-    assert pricer.model.objective() == 2
+    calculator.optimize(solver="highs")
+    assert calculator.model.objective() == 2
 
     # charge from solar_generation in ts=0,1 and discharge at ts=2
-    pricer = PricingFramework(
+    calculator = BatteryUtilityCalculator(
         storage=Storage(id=0, c_rate=1, volume=2, efficiency=1),
         prices=pd.DataFrame(
             {
@@ -120,14 +120,14 @@ def test_pricing_framework_selling_pv_w_storage():
         solar_generation=pd.Series([1, 1, 0]),
         demand=pd.Series([0, 0, 2]),
     )
-    pricer.optimize(solver="highs")
-    print(pricer.model.objective())
-    assert pricer.model.objective() == 0
+    calculator.optimize(solver="highs")
+    print(calculator.model.objective())
+    assert calculator.model.objective() == 0
 
 
 def test_pricing_framework_negative_prices():
     # buy as much in ts=2 cause we get paid for this
-    pricer = PricingFramework(
+    calculator = BatteryUtilityCalculator(
         storage=Storage(id=0, c_rate=1, volume=2, efficiency=1),
         prices=pd.DataFrame(
             {
@@ -140,14 +140,14 @@ def test_pricing_framework_negative_prices():
         solar_generation=pd.Series([0, 0, 0]),
         demand=pd.Series([0, 0, 2]),
     )
-    pricer.optimize(solver="highs")
-    print(pricer.model.objective())
-    assert pricer.model.objective() == 80
+    calculator.optimize(solver="highs")
+    print(calculator.model.objective())
+    assert calculator.model.objective() == 80
 
 
 def test_pricing_framework__c_rate():
     # check if c_rate is respected
-    pricer = PricingFramework(
+    calculator = BatteryUtilityCalculator(
         storage=Storage(id=0, c_rate=0.5, volume=2, efficiency=1),
         prices=pd.DataFrame(
             {
@@ -160,6 +160,6 @@ def test_pricing_framework__c_rate():
         solar_generation=pd.Series([0, 0, 0]),
         demand=pd.Series([2, 2, 0]),
     )
-    pricer.optimize(solver="highs")
-    print(pricer.model.objective())
-    assert pricer.model.objective() == -10
+    calculator.optimize(solver="highs")
+    print(calculator.model.objective())
+    assert calculator.model.objective() == -10

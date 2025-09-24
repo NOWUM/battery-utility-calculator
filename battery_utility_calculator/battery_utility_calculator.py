@@ -29,7 +29,7 @@ class Storage:
         self.efficiency = efficiency
 
 
-class PricingFramework:
+class BatteryUtilityCalculator:
     def __init__(
         self,
         storage: Storage,

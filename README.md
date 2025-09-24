@@ -23,20 +23,20 @@ pytest
 
 - Create a Storage object describing capacity and charge/discharge limits.
 - Provide price, PV generation and demand time series (as pandas DataFrame/Series).
-- Construct a `PricingFramework`, call `optimize(...)` with a solver (e.g. "highs") and inspect results via the model or `output_results()`.
+- Construct a `BatteryUtilityCalculator`, call `optimize(...)` with a solver (e.g. "highs") and inspect results via the model or `output_results()`.
 
 
 The following example shows that a storage with a volume of 1 kWh reduces the cost to buy the given demand by 1 as the storage is used to charge in cheap times.
 
 ```python
 import pandas as pd
-from battery_utility_calculator.pricing_framework import PricingFramework, Storage
+from battery_utility_calculator.pricing_framework import BatteryUtilityCalculator, Storage
 
 # now we need 2 kWh at each timestep
 # on timestep=0, we can buy for 0€/kWh and should buy 3kWh
 # as we use 2 kWh during timestep=0 and use 1 kWh for timestep=1
 # total cost should be 3*0 + 1*1 + 2*1 = 3
-pricer = PricingFramework(
+calculator = BatteryUtilityCalculator(
     storage=Storage(id=0, c_rate=1, volume=1, efficiency=1),
     prices=pd.DataFrame(
         {
@@ -49,14 +49,14 @@ pricer = PricingFramework(
     solar_generation=pd.Series([0, 0, 0]),
     demand=pd.Series([2, 2, 2]),
 )
-pricer.optimize(solver="highs")
-assert pricer.model.objective() == -3
+calculator.optimize(solver="highs")
+assert calculator.model.objective() == -3
 
 # or get timeseries output (after optimization)
-results = pricer.output_results()
+results = calculator.output_results()
 ```
 
-The cost of the optimal dispatch timeseries is provided in `pricer.model.objective()`
+The cost of the optimal dispatch timeseries is provided in `calculator.model.objective()`
 
 ## License
 MIT - see [LICENSE](./LICENSE)
