@@ -5,6 +5,7 @@
 import logging
 
 import pandas as pd
+import plotly.express as px
 import pyomo.environ as pyo
 
 log = logging.getLogger("battery_utility")
@@ -466,7 +467,7 @@ class EnergyCostCalculator:
 
         return self.model.objective()
 
-    def __build_demand_timeseries_df__(self):
+    def get_demand_coverage_timeseries_df(self):
         demand_coverage = pd.DataFrame(index=self.timesteps)
 
         demand_coverage["demand"] = self.demand.copy()
@@ -485,7 +486,7 @@ class EnergyCostCalculator:
 
         return demand_coverage
 
-    def __build_pv_timeseries_df__(self):
+    def get_solar_generation_timeseries_df(self):
         pv_usage = pd.DataFrame(index=self.timesteps)
 
         pv_usage["generation"] = self.solar_generation.loc[self.timesteps]
@@ -513,7 +514,7 @@ class EnergyCostCalculator:
 
         return pv_usage
 
-    def __build_storage_timeseries_df__(self):
+    def get_storage_timeseries_df(self):
         storage_usage = pd.DataFrame(index=self.timesteps)
 
         for use_case in self.storage_use_cases:
@@ -529,12 +530,120 @@ class EnergyCostCalculator:
                 "Model not optimized yet - run class method optimize() first!"
             )
 
-        demand_timeseries = self.__build_demand_timeseries_df__()
-        pv_timeseries = self.__build_pv_timeseries_df__()
-        storage_timeseries = self.__build_storage_timeseries_df__()
+        demand_timeseries = self.get_demand_coverage_timeseries_df()
+        pv_timeseries = self.get_solar_generation_timeseries_df()
+        storage_timeseries = self.get_storage_timeseries_df()
 
         return {
             "demand": demand_timeseries,
             "pv": pv_timeseries,
             "storage": storage_timeseries,
         }
+
+    def plot_demand_coverage(self, show: bool = True):
+        """Quick stacked bar + demand line using plotly.express."""
+        demand_df = self.get_demand_coverage_timeseries_df()
+
+        df = demand_df.reset_index().rename(
+            columns={
+                demand_df.index.name or "index": "t",
+                "from_pv": "From PV",
+                "from_storage": "From storage",
+                "from_community": "From community",
+                "from_grid": "From grid",
+            }
+        )
+
+        # only plot those with usage
+        df = df.drop(columns=[col for col in df.columns if (df[col] == 0).all()])
+
+        # long format for stacking
+        supply_cols = [
+            c
+            for c in ["From PV", "From storage", "From community", "From grid"]
+            if c in df.columns
+        ]
+        long = df.melt(
+            id_vars=[df.columns[0], "demand"],
+            value_vars=supply_cols,
+            var_name="source",
+            value_name="kWh",
+        )
+        fig = px.area(
+            long, x=df.columns[0], y="kWh", color="source", title="Demand coverage"
+        )
+
+        if "demand" in df.columns:
+            fig.add_scatter(x=df[df.columns[0]], y=df["demand"], name="Demand")
+
+        if show:
+            fig.show()
+        return fig
+
+    def plot_solar_generation(self, show: bool = True):
+        """Quick PV generation and usage plot using plotly.express."""
+        pv_df = self.get_solar_generation_timeseries_df()
+
+        df = pv_df.reset_index()
+
+        df = df.drop(columns=[col for col in df.columns if (df[col] == 0).all()])
+
+        df = df.rename(
+            columns={
+                "channel": "Channel",
+                "to_home": "To home",
+                "to_eeg": "To EEG",
+                "to_community": "To community",
+                "to_wholesale": "To wholesale",
+                "to_storage_home": "To storage for home",
+                "to_storage_eeg": "To storage for EEG",
+                "to_storage_wholesale": "To storage for wholesale",
+                "to_storage_community": "To storage for community",
+            }
+        )
+
+        usage_cols = [c for c in df.columns if c.startswith("To ")]
+        long = df.melt(
+            id_vars=[df.columns[0]],
+            value_vars=usage_cols,
+            var_name="Channel",
+            value_name="kWh",
+        )
+        fig = px.area(
+            long,
+            x=df.columns[0],
+            y="kWh",
+            color="Channel",
+            title="PV generation & usage",
+        )
+
+        if "generation" in df.columns:
+            fig.add_scatter(x=df[df.columns[0]], y=df["generation"], name="Generation")
+
+        if show:
+            fig.show()
+        return fig
+
+    def plot_storage_timeseries(self, show: bool = True):
+        """Plot storage SOC per use case using plotly.express."""
+        storage_df = self.get_storage_timeseries_df()
+
+        df = storage_df.reset_index().rename(
+            columns={
+                "soc_home": "Home",
+                "soc_eeg": "EEG",
+                "soc_wholesale": "Wholesale",
+                "soc_community": "Community",
+                "use_case": "Use case",
+            }
+        )
+
+        df = df.drop(columns=[col for col in df.columns if (df[col] == 0).all()])
+        long = df.melt(id_vars=[df.columns[0]], var_name="Use case", value_name="kWh")
+        fig = px.line(
+            long, x=df.columns[0], y="kWh", color="Use case", title="Storage SOC"
+        )
+
+        if show:
+            fig.show()
+        return fig
