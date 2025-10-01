@@ -2,7 +2,6 @@
 #
 # SPDX-License-Identifier: MIT
 
-import datetime
 import logging
 
 import pandas as pd
@@ -32,24 +31,25 @@ class EnergyCostCalculator:
     def __init__(
         self,
         storage: Storage | None,
+        demand: pd.Series,
+        solar_generation: pd.Series,
         grid_prices: pd.Series,
         eeg_prices: pd.Series,
         community_market_prices: pd.Series,
         wholesale_market_prices: pd.Series,
-        solar_generation: pd.Series,
-        demand: pd.Series,
         storage_use_cases: list[str] = ["eeg", "wholesale", "community", "home"],
+        check_timeseries: bool = True,
     ):
         """Optimizer for prosumer energy management, giving price recommendations for given products and given timeframes
 
         Args:
             storage (Storage) | None: The available storage. None if no storage is available.
+            demand (pd.Series): The demand data for the optimization. Values should be in kWh per hour (kW).
+            solar_generation (pd.Series): The solar generation data for the optimization. Values should be in kWh per hour (kW).
             grid_prices (pd.Series): The grid prices for the optimization. Values should be in EUR per kWh.
             eeg_prices (pd.Series): The EEG prices for the optimization. Values should be in EUR per kWh.
             community_market_prices (pd.Series): The community market prices for the optimization. Values should be in EUR per kWh.
             wholesale_market_prices (pd.Series): The wholesale market prices for the optimization. Values should be in EUR per kWh.
-            solar_generation (pd.Series): The solar generation data for the optimization. Values should be in kWh per hour (kW).
-            demand (pd.Series): The demand data for the optimization. Values should be in kWh per hour (kW).
             storage_use_cases (list[str]): The use cases for energy storage. Allowed values are "eeg", "wholesale", "community", "home"
         """
 
@@ -75,37 +75,37 @@ class EnergyCostCalculator:
 
         self.is_optimized = False
 
+        if check_timeseries:
+            self.__check_timeseries_indices__()
+
         self.model = pyo.ConcreteModel()
         self.set_model_variables()
         self.set_model_constraints()
         self.set_model_objective()
 
-    def __check_timeseries_indices__(self):
-        """Check if the indices of the timeseries are valid."""
 
-        # check if indices are datetime indices
-        if not isinstance(self.prices.index, pd.DatetimeIndex):
-            raise ValueError("Prices index must be a DatetimeIndex.")
-        if not isinstance(self.solar_generation.index, pd.DatetimeIndex):
-            raise ValueError("Solar generation index must be a DatetimeIndex.")
-        if not isinstance(self.demand.index, pd.DatetimeIndex):
-            raise ValueError("Demand index must be a DatetimeIndex.")
+    def __check_timeseries_indices__(self) -> None:
+        """Check if all timeseries indices are valid."""
+        series_list = [
+            self.demand,
+            self.solar_generation,
+            self.eeg_prices,
+            self.community_market_prices,
+            self.wholesale_market_prices,
+        ]
+        
+        # Referenz
+        ref_index = series_list[0].index
+        if not isinstance(ref_index, pd.DatetimeIndex):
+            raise TypeError("All timeseries indices must be DatetimeIndex")
+        
+        # Vergleich
+        for s in series_list[1:]:
+            if not isinstance(s.index, pd.DatetimeIndex):
+                raise TypeError("All timeseries indices must be DatetimeIndex")
+            if not s.index.equals(ref_index):
+                raise ValueError("All timeseries indices must be identical.")
 
-        # check if indices are in UTC timezone
-        if self.prices.index.tz != datetime.timezone.utc:
-            raise ValueError("Prices index must be in UTC timezone.")
-        if self.solar_generation.index.tz != datetime.timezone.utc:
-            raise ValueError("Solar generation index must be in UTC timezone.")
-        if self.demand.index.tz != datetime.timezone.utc:
-            raise ValueError("Demand index must be in UTC timezone.")
-
-        # check if indices are equal
-        if not self.prices.index.equals(self.solar_generation.index):
-            raise ValueError("Prices and solar generation indices must be equal.")
-        if not self.prices.index.equals(self.demand.index):
-            raise ValueError("Prices and demand indices must be equal.")
-        if not self.solar_generation.index.equals(self.demand.index):
-            raise ValueError("Solar generation and demand indices must be equal.")
 
     def set_model_variables(self):
         log.info("Setting up model variables...")
@@ -191,6 +191,7 @@ class EnergyCostCalculator:
         )
 
         log.info("Model variables set up successfully.")
+
 
     def set_model_constraints(self):
         log.info("Setting up model constraints...")
@@ -374,6 +375,7 @@ class EnergyCostCalculator:
 
         log.info("Model constraints set up successfully.")
 
+
     def set_model_objective(self):
         log.info("Setting up model objective...")
 
@@ -458,6 +460,7 @@ class EnergyCostCalculator:
 
         log.info("Model objective set up successfully.")
 
+
     def optimize(self, solver: str = "gurobi"):
         optimizer = pyo.SolverFactory(
             solver,
@@ -468,6 +471,7 @@ class EnergyCostCalculator:
         self.is_optimized = True
 
         return results
+
 
     def __build_demand_timeseries_df__(self):
         demand_coverage = pd.DataFrame(index=self.timesteps)
@@ -487,6 +491,7 @@ class EnergyCostCalculator:
         ]
 
         return demand_coverage
+
 
     def __build_pv_timeseries_df__(self):
         pv_usage = pd.DataFrame(index=self.timesteps)
@@ -515,6 +520,7 @@ class EnergyCostCalculator:
         ]
 
         return pv_usage
+
 
     def __build_storage_timeseries_df__(self):
         storage_usage = pd.DataFrame(index=self.timesteps)
