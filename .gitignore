@@ -9,4 +9,6 @@ __pycache__/
 *.egg-info/
 *.swp
 
+/env/
+
 data
