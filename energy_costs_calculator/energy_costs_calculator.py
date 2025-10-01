@@ -83,7 +83,6 @@ class EnergyCostCalculator:
         self.set_model_constraints()
         self.set_model_objective()
 
-
     def __check_timeseries_indices__(self) -> None:
         """Check if all timeseries indices are valid."""
         series_list = [
@@ -93,19 +92,18 @@ class EnergyCostCalculator:
             self.community_market_prices,
             self.wholesale_market_prices,
         ]
-        
+
         # Referenz
         ref_index = series_list[0].index
         if not isinstance(ref_index, pd.DatetimeIndex):
             raise TypeError("All timeseries indices must be DatetimeIndex")
-        
+
         # Vergleich
         for s in series_list[1:]:
             if not isinstance(s.index, pd.DatetimeIndex):
                 raise TypeError("All timeseries indices must be DatetimeIndex")
             if not s.index.equals(ref_index):
                 raise ValueError("All timeseries indices must be identical.")
-
 
     def set_model_variables(self):
         log.info("Setting up model variables...")
@@ -191,7 +189,6 @@ class EnergyCostCalculator:
         )
 
         log.info("Model variables set up successfully.")
-
 
     def set_model_constraints(self):
         log.info("Setting up model constraints...")
@@ -375,7 +372,6 @@ class EnergyCostCalculator:
 
         log.info("Model constraints set up successfully.")
 
-
     def set_model_objective(self):
         log.info("Setting up model objective...")
 
@@ -417,8 +413,7 @@ class EnergyCostCalculator:
             )
             # buying energy from supplier to home
             - sum(
-                self.model.supplier_to_home[timestep]
-                * self.grid_prices.loc[timestep]
+                self.model.supplier_to_home[timestep] * self.grid_prices.loc[timestep]
                 for timestep in self.timesteps
             )
         )
@@ -460,7 +455,6 @@ class EnergyCostCalculator:
 
         log.info("Model objective set up successfully.")
 
-
     def optimize(self, solver: str = "gurobi"):
         optimizer = pyo.SolverFactory(
             solver,
@@ -471,7 +465,6 @@ class EnergyCostCalculator:
         self.is_optimized = True
 
         return results
-
 
     def __build_demand_timeseries_df__(self):
         demand_coverage = pd.DataFrame(index=self.timesteps)
@@ -491,7 +484,6 @@ class EnergyCostCalculator:
         ]
 
         return demand_coverage
-
 
     def __build_pv_timeseries_df__(self):
         pv_usage = pd.DataFrame(index=self.timesteps)
@@ -520,7 +512,6 @@ class EnergyCostCalculator:
         ]
 
         return pv_usage
-
 
     def __build_storage_timeseries_df__(self):
         storage_usage = pd.DataFrame(index=self.timesteps)
