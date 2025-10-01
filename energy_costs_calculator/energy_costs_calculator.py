@@ -460,11 +460,11 @@ class EnergyCostCalculator:
             solver,
         )
 
-        results = optimizer.solve(self.model, tee=False)
+        optimizer.solve(self.model, tee=False)
 
         self.is_optimized = True
 
-        return results
+        return self.model.objective()
 
     def __build_demand_timeseries_df__(self):
         demand_coverage = pd.DataFrame(index=self.timesteps)

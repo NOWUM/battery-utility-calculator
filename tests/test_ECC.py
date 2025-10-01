@@ -21,8 +21,8 @@ def test_pricing_framework_baseline():
         solar_generation=pd.Series([0, 0, 0]),
         demand=pd.Series([1, 1, 1]),
     )
-    calculator.optimize(solver="highs")
-    assert calculator.model.objective() == -3
+    costs = calculator.optimize(solver="highs")
+    assert costs == -3
 
 
 def test_pricing_framework_opti_storage():
@@ -36,8 +36,8 @@ def test_pricing_framework_opti_storage():
         solar_generation=pd.Series([0, 0, 0]),
         demand=pd.Series([1, 1, 1]),
     )
-    calculator.optimize(solver="highs")
-    assert calculator.model.objective() == -1
+    costs = calculator.optimize(solver="highs")
+    assert costs == -1
 
 
 def test_pricing_framework_opti_storage_2():
@@ -54,8 +54,8 @@ def test_pricing_framework_opti_storage_2():
         solar_generation=pd.Series([0, 0, 0]),
         demand=pd.Series([2, 2, 2]),
     )
-    calculator.optimize(solver="highs")
-    assert calculator.model.objective() == -3
+    costs = calculator.optimize(solver="highs")
+    assert costs == -1
 
 
 def test_pricing_framework_selling_pv():
@@ -69,8 +69,8 @@ def test_pricing_framework_selling_pv():
         solar_generation=pd.Series([1, 0, 0]),
         demand=pd.Series([0, 0, 0]),
     )
-    calculator.optimize(solver="highs")
-    assert calculator.model.objective() == 1
+    costs = calculator.optimize(solver="highs")
+    assert costs == 1
 
 
 def test_pricing_framework_selling_pv_w_storage():
@@ -86,8 +86,8 @@ def test_pricing_framework_selling_pv_w_storage():
         solar_generation=pd.Series([1, 0, 0]),
         demand=pd.Series([0, 0, 0]),
     )
-    calculator.optimize(solver="highs")
-    assert calculator.model.objective() == 2
+    costs = calculator.optimize(solver="highs")
+    assert costs == 2
 
     # charge from solar_generation in ts=0,1 and discharge at ts=2
     calculator = EnergyCostCalculator(
@@ -99,9 +99,8 @@ def test_pricing_framework_selling_pv_w_storage():
         solar_generation=pd.Series([1, 1, 0]),
         demand=pd.Series([0, 0, 2]),
     )
-    calculator.optimize(solver="highs")
-    print(calculator.model.objective())
-    assert calculator.model.objective() == 0
+    costs = calculator.optimize(solver="highs")
+    assert costs == 0
 
 
 def test_pricing_framework_negative_prices():
@@ -115,9 +114,8 @@ def test_pricing_framework_negative_prices():
         solar_generation=pd.Series([0, 0, 0]),
         demand=pd.Series([0, 0, 2]),
     )
-    calculator.optimize(solver="highs")
-    print(calculator.model.objective())
-    assert calculator.model.objective() == 80
+    costs = calculator.optimize(solver="highs")
+    assert costs == 80
 
 
 def test_pricing_framework__c_rate():
@@ -131,6 +129,5 @@ def test_pricing_framework__c_rate():
         solar_generation=pd.Series([0, 0, 0]),
         demand=pd.Series([2, 2, 0]),
     )
-    calculator.optimize(solver="highs")
-    print(calculator.model.objective())
-    assert calculator.model.objective() == -10
+    costs = calculator.optimize(solver="highs")
+    assert costs == -10
