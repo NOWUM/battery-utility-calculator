@@ -4,7 +4,6 @@
 
 import datetime
 import logging
-from itertools import product
 
 import pandas as pd
 import pyomo.environ as pyo
@@ -33,7 +32,10 @@ class BatteryUtilityCalculator:
     def __init__(
         self,
         storage: Storage,
-        prices: pd.DataFrame,
+        grid_prices: pd.Series,
+        eeg_prices: pd.Series,
+        community_market_prices: pd.Series,
+        wholesale_market_prices: pd.Series,
         solar_generation: pd.Series,
         demand: pd.Series,
         storage_use_cases: list[str] = ["eeg", "wholesale", "community", "home"],
@@ -49,16 +51,18 @@ class BatteryUtilityCalculator:
         """
 
         self.storage = storage
-        self.prices = prices
+        self.grid_prices = grid_prices
+        self.eeg_prices = eeg_prices
+        self.community_market_prices = community_market_prices
+        self.wholesale_market_prices = wholesale_market_prices
         self.solar_generation = solar_generation
         self.demand = demand
         self.storage_use_cases = storage_use_cases
 
-        self.start = self.prices.index[0]
-        self.end = self.prices.index[-1]
+        self.start = self.eeg_prices.index[0]
+        self.end = self.eeg_prices.index[-1]
         self.timesteps = list(range(self.start, self.end + 1))
 
-        self.prices = prices
         self.solar_generation = solar_generation
         self.demand = demand
 
@@ -371,25 +375,25 @@ class BatteryUtilityCalculator:
             # selling from storage to community market
             sum(
                 self.model.storage_to_community[timestep]
-                * self.prices.loc[timestep, "community"]
+                * self.community_market_prices.loc[timestep]
                 for timestep in self.timesteps
             )
             # selling from pv to community market
             + sum(
                 self.model.pv_to_community[timestep]
-                * self.prices.loc[timestep, "community"]
+                * self.community_market_prices.loc[timestep]
                 for timestep in self.timesteps
             )
             # buying from community market to storage
             - sum(
                 self.model.community_to_storage[timestep]
-                * self.prices.loc[timestep, "community"]
+                * self.community_market_prices.loc[timestep]
                 for timestep in self.timesteps
             )
             # buying from community market to home
             - sum(
                 self.model.community_to_home[timestep]
-                * self.prices.loc[timestep, "community"]
+                * self.community_market_prices.loc[timestep]
                 for timestep in self.timesteps
             )
         )
@@ -399,13 +403,13 @@ class BatteryUtilityCalculator:
             # buying energy from supplier to storage
             -sum(
                 self.model.supplier_to_storage[timestep]
-                * self.prices.loc[timestep, "grid"]
+                * self.grid_prices.loc[timestep]
                 for timestep in self.timesteps
             )
             # buying energy from supplier to home
             - sum(
                 self.model.supplier_to_home[timestep]
-                * self.prices.loc[timestep, "grid"]
+                * self.grid_prices.loc[timestep]
                 for timestep in self.timesteps
             )
         )
@@ -414,12 +418,12 @@ class BatteryUtilityCalculator:
         eeg_cf = (
             # selling from storage for EEG
             sum(
-                self.model.storage_to_eeg[timestep] * self.prices.loc[timestep, "eeg"]
+                self.model.storage_to_eeg[timestep] * self.eeg_prices.loc[timestep]
                 for timestep in self.timesteps
             )
             # selling from PV for EEG
             + sum(
-                self.model.pv_to_eeg[timestep] * self.prices.loc[timestep, "eeg"]
+                self.model.pv_to_eeg[timestep] * self.eeg_prices.loc[timestep]
                 for timestep in self.timesteps
             )
         )
@@ -429,13 +433,13 @@ class BatteryUtilityCalculator:
             # selling from storage to wholesale
             sum(
                 self.model.storage_to_wholesale[timestep]
-                * self.prices.loc[timestep, "wholesale"]
+                * self.wholesale_market_prices.loc[timestep]
                 for timestep in self.timesteps
             )
             # buying from wholesale to storage
             - sum(
                 self.model.wholesale_to_storage[timestep]
-                * self.prices.loc[timestep, "wholesale"]
+                * self.wholesale_market_prices.loc[timestep]
                 for timestep in self.timesteps
             )
         )
@@ -469,10 +473,7 @@ class BatteryUtilityCalculator:
             self.model.pv_to_home[timestep].value for timestep in self.timesteps
         ]
         demand_coverage["from_storage"] = [
-            sum(
-                self.model.storage_to_home[timestep].value
-                for timestep in self.timesteps
-            )
+            self.model.storage_to_home[timestep].value for timestep in self.timesteps
         ]
         demand_coverage["from_community"] = [
             self.model.community_to_home[timestep].value for timestep in self.timesteps
@@ -494,31 +495,16 @@ class BatteryUtilityCalculator:
             self.model.pv_to_wholesale[t].value for t in self.timesteps
         ]
         pv_usage["to_storage_home"] = [
-            sum(
-                self.model.pv_to_storage[t, "home", sid].value
-                for sid in self.storage.id
-            )
-            for t in self.timesteps
+            self.model.pv_to_storage[t, "home"].value for t in self.timesteps
         ]
         pv_usage["to_storage_eeg"] = [
-            sum(
-                self.model.pv_to_storage[t, "eeg", sid].value for sid in self.storage.id
-            )
-            for t in self.timesteps
+            self.model.pv_to_storage[t, "eeg"].value for t in self.timesteps
         ]
         pv_usage["to_storage_wholesale"] = [
-            sum(
-                self.model.pv_to_storage[t, "wholesale", sid].value
-                for sid in self.storage.id
-            )
-            for t in self.timesteps
+            self.model.pv_to_storage[t, "wholesale"].value for t in self.timesteps
         ]
         pv_usage["to_storage_community"] = [
-            sum(
-                self.model.pv_to_storage[t, "community", sid].value
-                for sid in self.storage.id
-            )
-            for t in self.timesteps
+            self.model.pv_to_storage[t, "community"].value for t in self.timesteps
         ]
 
         return pv_usage
@@ -528,8 +514,7 @@ class BatteryUtilityCalculator:
 
         for use_case in self.storage_use_cases:
             storage_usage[f"soc_{use_case}"] = [
-                self.model.storage_level[t, use_case, sid].value
-                for t, sid in product(self.timesteps, self.storage.id)
+                self.model.storage_level[t, use_case].value for t in self.timesteps
             ]
 
         return storage_usage
