@@ -5,14 +5,14 @@
 import pandas as pd
 
 from battery_utility_calculator.battery_utility_calculator import (
-    BatteryUtilityCalculator,
+    EnergyCostCalculator,
     Storage,
 )
 
 
 def test_pricing_framework_baseline():
     # buying 1 kWh for 1 €/kWh should equal to 3€ total
-    calculator = BatteryUtilityCalculator(
+    calculator = EnergyCostCalculator(
         storage=Storage(id=0, c_rate=1, volume=0, efficiency=1),
         eeg_prices=pd.Series([0, 0, 0]),
         wholesale_market_prices=pd.Series([0, 0, 0]),
@@ -27,7 +27,7 @@ def test_pricing_framework_baseline():
 
 def test_pricing_framework_opti_storage():
     # buying 2 kWh for 0€/kWh and storing 1 kWh of this should equal 1€ total
-    calculator = BatteryUtilityCalculator(
+    calculator = EnergyCostCalculator(
         storage=Storage(id=0, c_rate=1, volume=1, efficiency=1),
         eeg_prices=pd.Series([0, 0, 0]),
         wholesale_market_prices=pd.Series([0, 0, 0]),
@@ -45,7 +45,7 @@ def test_pricing_framework_opti_storage_2():
     # on timestep=0, we can buy for 0€/kWh and should buy 3kWh
     # as we use 2 kWh during timestep=0 and use 1 kWh for timestep=1
     # total cost should be 3*0 + 1*1 + 2*1 = 3
-    calculator = BatteryUtilityCalculator(
+    calculator = EnergyCostCalculator(
         storage=Storage(id=0, c_rate=1, volume=1, efficiency=1),
         eeg_prices=pd.Series([0, 0, 0]),
         wholesale_market_prices=pd.Series([0, 0, 0]),
@@ -60,7 +60,7 @@ def test_pricing_framework_opti_storage_2():
 
 def test_pricing_framework_selling_pv():
     # here we should gain 1€ from selling pv
-    calculator = BatteryUtilityCalculator(
+    calculator = EnergyCostCalculator(
         storage=Storage(id=0, c_rate=1, volume=0, efficiency=1),
         eeg_prices=pd.Series([1, 0, 0]),
         wholesale_market_prices=pd.Series([0, 0, 0]),
@@ -77,7 +77,7 @@ def test_pricing_framework_selling_pv_w_storage():
     # same as above, but we can store PV and sell at
     # timestep=1 instead of timestep=0, as we can get 2€/kWh
     # in timestep=1
-    calculator = BatteryUtilityCalculator(
+    calculator = EnergyCostCalculator(
         storage=Storage(id=0, c_rate=1, volume=1, efficiency=1),
         eeg_prices=pd.Series([1, 2, 0]),
         wholesale_market_prices=pd.Series([0, 0, 0]),
@@ -90,7 +90,7 @@ def test_pricing_framework_selling_pv_w_storage():
     assert calculator.model.objective() == 2
 
     # charge from solar_generation in ts=0,1 and discharge at ts=2
-    calculator = BatteryUtilityCalculator(
+    calculator = EnergyCostCalculator(
         storage=Storage(id=0, c_rate=1, volume=2, efficiency=1),
         eeg_prices=pd.Series([0, 0, 0]),
         wholesale_market_prices=pd.Series([0, 0, 0]),
@@ -106,7 +106,7 @@ def test_pricing_framework_selling_pv_w_storage():
 
 def test_pricing_framework_negative_prices():
     # buy as much in ts=2 cause we get paid for this
-    calculator = BatteryUtilityCalculator(
+    calculator = EnergyCostCalculator(
         storage=Storage(id=0, c_rate=1, volume=2, efficiency=1),
         eeg_prices=pd.Series([0, 0, 0]),
         wholesale_market_prices=pd.Series([0, 0, 0]),
@@ -122,7 +122,7 @@ def test_pricing_framework_negative_prices():
 
 def test_pricing_framework__c_rate():
     # check if c_rate is respected
-    calculator = BatteryUtilityCalculator(
+    calculator = EnergyCostCalculator(
         storage=Storage(id=0, c_rate=0.5, volume=2, efficiency=1),
         eeg_prices=pd.Series([0, 0, 0]),
         wholesale_market_prices=pd.Series([0, 0, 0]),
