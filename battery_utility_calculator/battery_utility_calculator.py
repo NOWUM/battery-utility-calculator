@@ -31,7 +31,7 @@ class Storage:
 class BatteryUtilityCalculator:
     def __init__(
         self,
-        storage: Storage,
+        storage: Storage | None,
         grid_prices: pd.Series,
         eeg_prices: pd.Series,
         community_market_prices: pd.Series,
@@ -43,14 +43,21 @@ class BatteryUtilityCalculator:
         """Optimizer for prosumer energy management, giving price recommendations for given products and given timeframes
 
         Args:
-            storage (Storage): The available storage.
-            demand (pd.Series): The demand data for the optimization. Values should be in kWh per hour (kW).
-            prices (pd.DataFrame): The price data for the optimization. Columns should be "eeg", "wholesale", "community", "grid" with values in €/kWh.
+            storage (Storage) | None: The available storage. None if no storage is available.
+            grid_prices (pd.Series): The grid prices for the optimization. Values should be in EUR per kWh.
+            eeg_prices (pd.Series): The EEG prices for the optimization. Values should be in EUR per kWh.
+            community_market_prices (pd.Series): The community market prices for the optimization. Values should be in EUR per kWh.
+            wholesale_market_prices (pd.Series): The wholesale market prices for the optimization. Values should be in EUR per kWh.
             solar_generation (pd.Series): The solar generation data for the optimization. Values should be in kWh per hour (kW).
+            demand (pd.Series): The demand data for the optimization. Values should be in kWh per hour (kW).
             storage_use_cases (list[str]): The use cases for energy storage. Allowed values are "eeg", "wholesale", "community", "home"
         """
 
-        self.storage = storage
+        if storage:
+            self.storage = storage
+        else:
+            self.storage = Storage(id=0, c_rate=1, volume=0, efficiency=1)
+
         self.grid_prices = grid_prices
         self.eeg_prices = eeg_prices
         self.community_market_prices = community_market_prices
