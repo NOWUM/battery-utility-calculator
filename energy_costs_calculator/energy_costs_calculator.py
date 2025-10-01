@@ -39,6 +39,11 @@ class EnergyCostCalculator:
         community_market_prices: pd.Series,
         wholesale_market_prices: pd.Series,
         storage_use_cases: list[str] = ["eeg", "wholesale", "community", "home"],
+        allow_pv_to_community: bool = False,
+        allow_storage_to_wholesale: bool = False,
+        allow_community_to_home: bool = False,
+        allow_community_to_storage: bool = False,
+        allow_storage_to_community: bool = False,
         check_timeseries: bool = True,
     ):
         """Optimizer for prosumer energy management, giving price recommendations for given products and given timeframes
@@ -66,6 +71,12 @@ class EnergyCostCalculator:
         self.solar_generation = solar_generation
         self.demand = demand
         self.storage_use_cases = storage_use_cases
+
+        self.allow_pv_to_community = allow_pv_to_community
+        self.allow_storage_to_wholesale = allow_storage_to_wholesale
+        self.allow_community_to_home = allow_community_to_home
+        self.allow_storage_to_community = allow_storage_to_community
+        self.allow_community_to_storage = allow_community_to_storage
 
         self.start = self.eeg_prices.index[0]
         self.end = self.eeg_prices.index[-1]
@@ -118,10 +129,15 @@ class EnergyCostCalculator:
         )
 
         # Selling PV on community market
-        # remove bounds for activation
-        self.model.pv_to_community = pyo.Var(
-            self.timesteps, domain=pyo.NonNegativeReals, bounds=(0, 0)
-        )
+        if self.allow_pv_to_community:
+            self.model.pv_to_community = pyo.Var(
+                self.timesteps,
+                domain=pyo.NonNegativeReals,
+            )
+        else:
+            self.model.pv_to_community = pyo.Var(
+                self.timesteps, domain=pyo.NonNegativeReals, bounds=(0, 0)
+            )
 
         # PV energy to storage
         self.model.pv_to_storage = pyo.Var(
@@ -144,16 +160,28 @@ class EnergyCostCalculator:
         self.model.storage_to_eeg = pyo.Var(self.timesteps, domain=pyo.NonNegativeReals)
 
         # selling from storage on wholesale
-        self.model.storage_to_wholesale = pyo.Var(
-            self.timesteps, domain=pyo.NonNegativeReals, bounds=(0, 0)
-        )
+        if self.allow_storage_to_wholesale:
+            self.model.storage_to_wholesale = pyo.Var(
+                self.timesteps,
+                domain=pyo.NonNegativeReals,
+            )
+        else:
+            self.model.storage_to_wholesale = pyo.Var(
+                self.timesteps, domain=pyo.NonNegativeReals, bounds=(0, 0)
+            )
 
         # selling from storage on community
-        self.model.storage_to_community = pyo.Var(
-            self.timesteps,
-            domain=pyo.NonNegativeReals,
-            bounds=(0, 0),
-        )
+        if self.allow_storage_to_community:
+            self.model.storage_to_community = pyo.Var(
+                self.timesteps,
+                domain=pyo.NonNegativeReals,
+            )
+        else:
+            self.model.storage_to_community = pyo.Var(
+                self.timesteps,
+                domain=pyo.NonNegativeReals,
+                bounds=(0, 0),
+            )
 
         # using energy from storage at home
         self.model.storage_to_home = pyo.Var(
@@ -167,17 +195,28 @@ class EnergyCostCalculator:
 
         # charging storage from community market
         # remove bounds for activation
-        self.model.community_to_storage = pyo.Var(
-            self.timesteps,
-            domain=pyo.NonNegativeReals,
-            bounds=(0, 0),
-        )
+        if self.allow_community_to_storage:
+            self.model.community_to_storage = pyo.Var(
+                self.timesteps,
+                domain=pyo.NonNegativeReals,
+            )
+        else:
+            self.model.community_to_storage = pyo.Var(
+                self.timesteps,
+                domain=pyo.NonNegativeReals,
+                bounds=(0, 0),
+            )
 
         # buying energy from community market
-        # remove bounds for activation
-        self.model.community_to_home = pyo.Var(
-            self.timesteps, domain=pyo.NonNegativeReals, bounds=(0, 0)
-        )
+        if self.allow_community_to_home:
+            self.model.community_to_home = pyo.Var(
+                self.timesteps,
+                domain=pyo.NonNegativeReals,
+            )
+        else:
+            self.model.community_to_home = pyo.Var(
+                self.timesteps, domain=pyo.NonNegativeReals, bounds=(0, 0)
+            )
 
         # charging storage from supplier
         self.model.supplier_to_storage = pyo.Var(
