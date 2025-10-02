@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: NOWUM Developers
+
+SPDX-License-Identifier: MIT
+-->
+
 <!-- Short, focused guidance for AI coding agents working on this repo -->
 
 # Battery Utility Calculator — Copilot instructions
