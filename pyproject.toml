@@ -47,8 +47,8 @@ Homepage = "https://assume-project.de/"
 Repository = "https://github.com/nowum/battery-utility-calculator"
 Issues = "https://github.com/nowum/battery-utility-calculator/issues"
 
-[tool.setuptools]
-packages = {find = {}}
+[tool.setuptools.packages.find]
+include = ["src*", "tests*"]
 
 [tool.ruff]
 
