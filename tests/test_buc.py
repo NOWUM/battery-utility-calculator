@@ -4,7 +4,7 @@
 
 import pandas as pd
 
-from src.battery_utility_calculator import calculate_bidding_curve
+from battery_utility_calculator.battery_utility_calculator import calculate_bidding_curve
 
 
 def test_calculate_bidding_curve():

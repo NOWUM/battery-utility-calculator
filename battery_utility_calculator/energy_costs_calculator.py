@@ -8,7 +8,7 @@ import pandas as pd
 import plotly.express as px
 import pyomo.environ as pyo
 
-from src import Storage
+from battery_utility_calculator import Storage
 
 log = logging.getLogger("battery_utility")
 log.setLevel(logging.WARNING)

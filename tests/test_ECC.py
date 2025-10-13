@@ -4,7 +4,7 @@
 
 import pandas as pd
 
-from src.energy_costs_calculator import (
+from battery_utility_calculator.energy_costs_calculator import (
     EnergyCostCalculator,
     Storage,
 )

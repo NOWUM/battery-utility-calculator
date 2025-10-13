@@ -6,8 +6,8 @@ from typing import Literal
 
 import pandas as pd
 
-from src import EnergyCostCalculator as ECC
-from src import Storage
+from battery_utility_calculator import EnergyCostCalculator as ECC
+from battery_utility_calculator import Storage
 
 
 def calculate_storage_worth(
