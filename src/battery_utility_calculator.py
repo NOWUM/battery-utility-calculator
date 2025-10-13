@@ -2,6 +2,8 @@
 #
 # SPDX-License-Identifier: MIT
 
+from typing import Literal
+
 import pandas as pd
 
 from src import EnergyCostCalculator as ECC
@@ -134,4 +136,31 @@ def calculate_multiple_storage_worth(
 
         df = pd.concat([df, stor_df], ignore_index=True)
 
+    return df
+
+
+def calculate_bidding_curve(
+    volumes_worth: pd.DataFrame,
+    buy_or_sell_side: Literal["buyer", "seller"],
+) -> pd.DataFrame:
+    """Calculates the bidding curve for a single product.
+
+    Args:
+        volumes_worth (pd.DataFrame): The volumes and their worth (values) in a pd.DataFrame. Columns should be "volume" and "worth".
+        buy_or_sell_side (Literal["buyer", "seller"]): Wether to calculate for buyer side or seller side.
+
+    Returns:
+        pd.DataFrame: A new DataFrame with the bidding curve.
+    """
+
+    volumes_worth.loc[len(volumes_worth), ["volume", "worth"]] = 0, 0
+    if buy_or_sell_side == "buyer":
+        df = volumes_worth.sort_values("volume", ascending=True)
+    elif buy_or_sell_side == "seller":
+        df = volumes_worth.sort_values("volume", ascending=True)
+    else:
+        raise ValueError("buy_or_sell_side has to be either 'buyer' or 'seller'")
+
+    df = df.diff().dropna().reset_index(drop=True).abs()
+    df.rename(columns={"worth": "marginal_price"}, inplace=True)
     return df
