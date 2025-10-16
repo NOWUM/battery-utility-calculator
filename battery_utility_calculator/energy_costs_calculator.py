@@ -102,7 +102,7 @@ class EnergyCostCalculator:
         self.timestamps = ref_index.copy()  # save original index for later
         if isinstance(ref_index, pd.DatetimeIndex):
             ref_index = self.timesteps  # set to integer values
-            log.warning("DatetimeIndex not allowed, set to integer")
+            log.warning("DatetimeIndex for demand not allowed, set to integer")
 
         # ensure all indices match the reference and if DatetimeIndex
         # are provided convert the actual instance attributes to integer indices
