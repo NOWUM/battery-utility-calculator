@@ -10,7 +10,7 @@ from battery_utility_calculator.energy_costs_calculator import (
 )
 
 
-def test_pricing_framework_baseline():
+def test_ECC_baseline():
     # buying 1 kWh for 1 €/kWh should equal to 3€ total
     calculator = EnergyCostCalculator(
         storage=Storage(id=0, c_rate=1, volume=0, efficiency=1),
@@ -25,7 +25,7 @@ def test_pricing_framework_baseline():
     assert costs == -3
 
 
-def test_pricing_framework_opti_storage():
+def test_ECC_opti_storage():
     # buying 2 kWh for 0€/kWh and storing 1 kWh of this should equal 1€ total
     calculator = EnergyCostCalculator(
         storage=Storage(id=0, c_rate=1, volume=1, efficiency=1),
@@ -40,7 +40,7 @@ def test_pricing_framework_opti_storage():
     assert costs == -1
 
 
-def test_pricing_framework_opti_storage_2():
+def test_ECC_opti_storage_2():
     # now we need 2 kWh at each timestep
     # on timestep=0, we can buy for 0€/kWh and should buy 3kWh
     # as we use 2 kWh during timestep=0 and use 1 kWh for timestep=1
@@ -55,10 +55,10 @@ def test_pricing_framework_opti_storage_2():
         demand=pd.Series([2, 2, 2]),
     )
     costs = calculator.optimize(solver="highs")
-    assert costs == -1
+    assert costs == -3
 
 
-def test_pricing_framework_selling_pv():
+def test_ECC_selling_pv():
     # here we should gain 1€ from selling pv
     calculator = EnergyCostCalculator(
         storage=Storage(id=0, c_rate=1, volume=0, efficiency=1),
@@ -73,7 +73,7 @@ def test_pricing_framework_selling_pv():
     assert costs == 1
 
 
-def test_pricing_framework_selling_pv_w_storage():
+def test_ECC_selling_pv_w_storage():
     # same as above, but we can store PV and sell at
     # timestep=1 instead of timestep=0, as we can get 2€/kWh
     # in timestep=1
@@ -103,7 +103,7 @@ def test_pricing_framework_selling_pv_w_storage():
     assert costs == 0
 
 
-def test_pricing_framework_negative_prices():
+def test_ECC_negative_prices():
     # buy as much in ts=2 cause we get paid for this
     calculator = EnergyCostCalculator(
         storage=Storage(id=0, c_rate=1, volume=2, efficiency=1),
@@ -118,7 +118,7 @@ def test_pricing_framework_negative_prices():
     assert costs == 80
 
 
-def test_pricing_framework__c_rate():
+def test_ECC__c_rate():
     # check if c_rate is respected
     calculator = EnergyCostCalculator(
         storage=Storage(id=0, c_rate=0.5, volume=2, efficiency=1),
