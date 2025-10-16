@@ -155,7 +155,7 @@ def calculate_multiple_storage_worth(
         baseline_storage.volume,
         baseline_storage.efficiency,
         baseline_costs,
-        np.nan,
+        0,
     ]
 
     for storage in storages_to_calculate:
