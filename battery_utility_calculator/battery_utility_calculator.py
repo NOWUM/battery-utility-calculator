@@ -4,6 +4,7 @@
 
 from typing import Literal
 
+import numpy as np
 import pandas as pd
 
 from battery_utility_calculator import EnergyCostCalculator as ECC
@@ -24,7 +25,6 @@ def calculate_storage_worth(
     allow_community_to_storage: bool = False,
     allow_pv_to_community: bool = False,
     allow_storage_to_wholesale: bool = False,
-    check_timeseries: bool = True,
     solver: str = "gurobi",
 ) -> float:
     """Calculates the worth (value) of a single storage (compared to a baseline storage).
@@ -64,7 +64,6 @@ def calculate_storage_worth(
         allow_community_to_storage=allow_community_to_storage,
         allow_pv_to_community=allow_pv_to_community,
         allow_storage_to_wholesale=allow_storage_to_wholesale,
-        check_timeseries=check_timeseries,
     )
     baseline_costs = baseline_ecc.optimize(solver=solver)
 
@@ -82,7 +81,6 @@ def calculate_storage_worth(
         allow_community_to_storage=allow_community_to_storage,
         allow_pv_to_community=allow_pv_to_community,
         allow_storage_to_wholesale=allow_storage_to_wholesale,
-        check_timeseries=check_timeseries,
     )
     to_calc_costs = to_calc_ecc.optimize(solver=solver)
 
@@ -106,7 +104,6 @@ def calculate_multiple_storage_worth(
     allow_community_to_storage: bool = False,
     allow_pv_to_community: bool = False,
     allow_storage_to_wholesale: bool = False,
-    check_timeseries: bool = True,
     solver: str = "gurobi",
 ) -> pd.DataFrame:
     """Calculates the worth (value) of multiple storages compared to a baseline storage.
@@ -146,13 +143,21 @@ def calculate_multiple_storage_worth(
         allow_community_to_storage=allow_community_to_storage,
         allow_pv_to_community=allow_pv_to_community,
         allow_storage_to_wholesale=allow_storage_to_wholesale,
-        check_timeseries=check_timeseries,
     )
     baseline_costs = baseline_ecc.optimize(solver=solver)
 
     df = pd.DataFrame(
         columns=["id", "c_rate", "volume", "efficiency", "costs", "worth"]
     )
+    df.loc[0, ["id", "c_rate", "volume", "efficiency", "costs", "worth"]] = [
+        baseline_storage.id,
+        baseline_storage.c_rate,
+        baseline_storage.volume,
+        baseline_storage.efficiency,
+        baseline_costs,
+        np.nan,
+    ]
+
     for storage in storages_to_calculate:
         ecc = ECC(
             storage=storage,
@@ -167,7 +172,6 @@ def calculate_multiple_storage_worth(
             allow_community_to_storage=allow_community_to_storage,
             allow_pv_to_community=allow_pv_to_community,
             allow_storage_to_wholesale=allow_storage_to_wholesale,
-            check_timeseries=check_timeseries,
         )
         costs = ecc.optimize(solver=solver)
         storage_worth = costs - baseline_costs
