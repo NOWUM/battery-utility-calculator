@@ -8,7 +8,7 @@ import pandas as pd
 import plotly.express as px
 import pyomo.environ as pyo
 
-from src import Storage
+from battery_utility_calculator import Storage
 
 log = logging.getLogger("battery_utility")
 log.setLevel(logging.WARNING)
@@ -30,7 +30,6 @@ class EnergyCostCalculator:
         allow_community_to_home: bool = False,
         allow_community_to_storage: bool = False,
         allow_storage_to_community: bool = False,
-        check_timeseries: bool = True,
     ):
         """Optimizer for prosumer energy management, giving price recommendations for given products and given timeframes
 
@@ -50,12 +49,12 @@ class EnergyCostCalculator:
         else:
             self.storage = Storage(id=0, c_rate=1, volume=0, efficiency=1)
 
-        self.grid_prices = grid_prices
-        self.eeg_prices = eeg_prices
-        self.community_market_prices = community_market_prices
-        self.wholesale_market_prices = wholesale_market_prices
-        self.solar_generation = solar_generation
-        self.demand = demand
+        self.grid_prices = grid_prices.copy()
+        self.eeg_prices = eeg_prices.copy()
+        self.community_market_prices = community_market_prices.copy()
+        self.wholesale_market_prices = wholesale_market_prices.copy()
+        self.solar_generation = solar_generation.copy()
+        self.demand = demand.copy()
         self.storage_use_cases = storage_use_cases
 
         self.allow_pv_to_community = allow_pv_to_community
@@ -64,17 +63,24 @@ class EnergyCostCalculator:
         self.allow_storage_to_community = allow_storage_to_community
         self.allow_community_to_storage = allow_community_to_storage
 
-        self.start = self.eeg_prices.index[0]
-        self.end = self.eeg_prices.index[-1]
-        self.timesteps = list(range(self.start, self.end + 1))
+        self.timesteps = list(range(len(self.demand.index)))
+
+        self.__check_timeseries_indices__()
+
+        self.start = self.demand.index[0]
+        self.end = self.demand.index[-1]
+
+        if isinstance(self.demand.index, pd.DatetimeIndex):
+            self.timestamps = pd.date_range(
+                start=self.start, end=self.end, periods=len(self.demand)
+            )
+        else:
+            self.timestamps = self.timesteps
 
         self.solar_generation = solar_generation
         self.demand = demand
 
         self.is_optimized = False
-
-        if check_timeseries:
-            self.__check_timeseries_indices__()
 
         self.model = pyo.ConcreteModel()
         self.set_model_variables()
@@ -83,25 +89,34 @@ class EnergyCostCalculator:
 
     def __check_timeseries_indices__(self) -> None:
         """Check if all timeseries indices are valid."""
-        series_list = [
-            self.demand,
-            self.solar_generation,
-            self.eeg_prices,
-            self.community_market_prices,
-            self.wholesale_market_prices,
+        attrs = [
+            "solar_generation",
+            "grid_prices",
+            "eeg_prices",
+            "community_market_prices",
+            "wholesale_market_prices",
         ]
 
-        # Referenz
-        ref_index = series_list[0].index
-        if not isinstance(ref_index, pd.DatetimeIndex):
-            raise TypeError("All timeseries indices must be DatetimeIndex")
+        # reference
+        self.timestamps = self.demand.index.copy()  # save original index for later
+        if isinstance(self.demand.index, pd.DatetimeIndex):
+            self.demand.index = self.timesteps  # set to integer values
+            log.debug("DatetimeIndex for demand not allowed, set to integer")
 
-        # Vergleich
-        for s in series_list[1:]:
-            if not isinstance(s.index, pd.DatetimeIndex):
-                raise TypeError("All timeseries indices must be DatetimeIndex")
-            if not s.index.equals(ref_index):
-                raise ValueError("All timeseries indices must be identical.")
+        # ensure all indices match the reference and if DatetimeIndex
+        # are provided convert the actual instance attributes to integer indices
+        # while keeping the original timestamps in self.timestamps.
+        for name in attrs:
+            series = getattr(self, name)
+            # compare against saved timestamps (which may be integer list)
+            if not series.index.equals(self.timestamps):
+                raise ValueError(f"{name}: all timeseries indices must be identical.")
+
+            if isinstance(series.index, pd.DatetimeIndex):
+                # convert the actual stored Series index to integer timesteps
+                series.index = self.timesteps
+                setattr(self, name, series)
+                log.debug(f"DatetimeIndex for {name} not allowed, set to integer")
 
     def set_model_variables(self):
         log.info("Setting up model variables...")

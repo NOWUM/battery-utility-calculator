@@ -32,6 +32,7 @@ dependencies = [
     "argcomplete >=3.1.4",
     "pandas >=2.0.0",
     "pyomo >=6.8.0",
+    "plotly >= 6.3.1",
     "highspy",
 ]
 
@@ -47,8 +48,8 @@ Homepage = "https://assume-project.de/"
 Repository = "https://github.com/nowum/battery-utility-calculator"
 Issues = "https://github.com/nowum/battery-utility-calculator/issues"
 
-[tool.setuptools.packages.find]
-include = ["src*", "tests*"]
+[tool.setuptools.packages]
+find = {}
 
 [tool.ruff]
 

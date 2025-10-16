@@ -60,4 +60,3 @@ The cost of the optimal dispatch timeseries is provided in `calculator.model.obj
 
 ## License
 MIT - see [LICENSE](./LICENSE)
-
