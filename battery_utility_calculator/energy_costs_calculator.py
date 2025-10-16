@@ -111,7 +111,7 @@ class EnergyCostCalculator:
             series = getattr(self, name)
             # compare against saved timestamps (which may be integer list)
             if not series.index.equals(self.timestamps):
-                raise ValueError("All timeseries indices must be identical.")
+                raise ValueError(f"{name}: all timeseries indices must be identical.")
 
             if isinstance(series.index, pd.DatetimeIndex):
                 # convert the actual stored Series index to integer timesteps
