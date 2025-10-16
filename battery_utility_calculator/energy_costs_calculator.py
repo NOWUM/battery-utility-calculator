@@ -49,12 +49,12 @@ class EnergyCostCalculator:
         else:
             self.storage = Storage(id=0, c_rate=1, volume=0, efficiency=1)
 
-        self.grid_prices = grid_prices
-        self.eeg_prices = eeg_prices
-        self.community_market_prices = community_market_prices
-        self.wholesale_market_prices = wholesale_market_prices
-        self.solar_generation = solar_generation
-        self.demand = demand
+        self.grid_prices = grid_prices.copy()
+        self.eeg_prices = eeg_prices.copy()
+        self.community_market_prices = community_market_prices.copy()
+        self.wholesale_market_prices = wholesale_market_prices.copy()
+        self.solar_generation = solar_generation.copy()
+        self.demand = demand.copy()
         self.storage_use_cases = storage_use_cases
 
         self.allow_pv_to_community = allow_pv_to_community
@@ -98,11 +98,10 @@ class EnergyCostCalculator:
         ]
 
         # reference
-        ref_index = self.demand.index
-        self.timestamps = ref_index.copy()  # save original index for later
-        if isinstance(ref_index, pd.DatetimeIndex):
-            ref_index = self.timesteps  # set to integer values
-            log.warning("DatetimeIndex for demand not allowed, set to integer")
+        self.timestamps = self.demand.index.copy()  # save original index for later
+        if isinstance(self.demand.index, pd.DatetimeIndex):
+            self.demand.index = self.timesteps  # set to integer values
+            log.debug("DatetimeIndex for demand not allowed, set to integer")
 
         # ensure all indices match the reference and if DatetimeIndex
         # are provided convert the actual instance attributes to integer indices
@@ -117,7 +116,7 @@ class EnergyCostCalculator:
                 # convert the actual stored Series index to integer timesteps
                 series.index = self.timesteps
                 setattr(self, name, series)
-                log.warning(f"DatetimeIndex for {name} not allowed, set to integer")
+                log.debug(f"DatetimeIndex for {name} not allowed, set to integer")
 
     def set_model_variables(self):
         log.info("Setting up model variables...")
