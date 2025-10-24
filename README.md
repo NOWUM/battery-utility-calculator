@@ -19,44 +19,65 @@ pip install -e .[test]
 pytest
 ```
 
-## Example
+## Usage examples (public helpers)
 
-- Create a Storage object describing capacity and charge/discharge limits.
-- Provide price, PV generation and demand time series (as pandas DataFrame/Series).
-- Construct a `BatteryUtilityCalculator`, call `optimize(...)` with a solver (e.g. "highs") and inspect results via the model or `output_results()`.
+This package exposes small helper functions for common workflows plus the underlying optimizer class.
 
+- `Storage(id, c_rate, volume, efficiency)` — small value object describing a storage unit.
+- `calculate_storage_worth(baseline_storage, storage_to_calculate, demand, solar_generation, grid_prices, eeg_prices, community_market_prices, wholesale_market_prices, ...)` — returns the value (difference in optimized costs) of adding `storage_to_calculate` compared to `baseline_storage`.
+- `calculate_multiple_storage_worth(...)` — same as above but returns a DataFrame with costs and worth for multiple storage sizes.
+- `calculate_bidding_curve(volumes_worth, buy_or_sell_side)` — converts cumulative worths into a marginal bidding curve.
 
-The following example shows that a storage with a volume of 1 kWh reduces the cost to buy the given demand by 1 as the storage is used to charge in cheap times.
+Minimal examples (copied from `tests/`):
 
-```python
+```py
 import pandas as pd
-from battery_utility_calculator.pricing_framework import BatteryUtilityCalculator, Storage
-
-# now we need 2 kWh at each timestep
-# on timestep=0, we can buy for 0€/kWh and should buy 3kWh
-# as we use 2 kWh during timestep=0 and use 1 kWh for timestep=1
-# total cost should be 3*0 + 1*1 + 2*1 = 3
-calculator = BatteryUtilityCalculator(
-    storage=Storage(id=0, c_rate=1, volume=1, efficiency=1),
-    prices=pd.DataFrame(
-        {
-            "eeg": [0, 0, 0],
-            "wholesale": [0, 0, 0],
-            "community": [0, 0, 0],
-            "grid": [0, 1, 1],
-        }
-    ),
-    solar_generation=pd.Series([0, 0, 0]),
-    demand=pd.Series([2, 2, 2]),
+from battery_utility_calculator.battery_utility_calculator import (
+    Storage,
+    calculate_storage_worth,
+    calculate_multiple_storage_worth,
+    calculate_bidding_curve,
 )
-calculator.optimize(solver="highs")
-assert calculator.model.objective() == -3
 
-# or get timeseries output (after optimization)
-results = calculator.output_results()
+# single worth
+baseline = Storage(0, 1, 0, 1)
+candidate = Storage(0, 1, 1, 1)
+worth = calculate_storage_worth(
+    baseline_storage=baseline,
+    storage_to_calculate=candidate,
+    eeg_prices=pd.Series([0, 0, 0]),
+    wholesale_market_prices=pd.Series([0, 0, 0]),
+    community_market_prices=pd.Series([0, 0, 0]),
+    grid_prices=pd.Series([0, 1, 1]),
+    solar_generation=pd.Series([0, 0, 0]),
+    demand=pd.Series([1, 1, 1]),
+    solver="appsi_highs",
+)
+
+# multiple worths
+storages = [Storage(0, 1, 1, 1), Storage(0, 1, 2, 1)]
+df = calculate_multiple_storage_worth(
+    baseline_storage=baseline,
+    storages_to_calculate=storages,
+    eeg_prices=pd.Series([0, 0, 0]),
+    wholesale_market_prices=pd.Series([0, 0, 0]),
+    community_market_prices=pd.Series([0, 0, 0]),
+    grid_prices=pd.Series([0, 1, 1]),
+    solar_generation=pd.Series([0, 0, 0]),
+    demand=pd.Series([1, 1, 1]),
+    solver="appsi_highs",
+)
+
+# bidding curve
+vol_worth = pd.DataFrame({"volume": [1, 2, 3], "worth": [5, 7, 8]})
+curve = calculate_bidding_curve(volumes_worth=vol_worth, buy_or_sell_side="buyer")
 ```
 
-The cost of the optimal dispatch timeseries is provided in `calculator.model.objective()`
+Notes about the optimizer
+
+The core optimizer is `EnergyCostCalculator` (in `battery_utility_calculator/energy_costs_calculator.py`). It builds a Pyomo `ConcreteModel` with variables like `pv_to_storage[t,use]` and per-use-case storage state-of-charge variables. The objective maximizes summed cashflows (community + supplier + EEG + wholesale). If you need lower-level control or plotting, instantiate `EnergyCostCalculator` directly and call `optimize(solver=...)`.
+
+Be aware of time-index handling: the optimizer normalizes timeseries indices to integer timesteps while preserving an original `timestamps` copy when `DatetimeIndex` inputs are used; tests commonly use simple integer-index Series.
 
 ## License
 MIT - see [LICENSE](./LICENSE)
