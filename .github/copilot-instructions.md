@@ -4,65 +4,68 @@ SPDX-FileCopyrightText: NOWUM Developers
 SPDX-License-Identifier: MIT
 -->
 
-<!-- Short, focused guidance for AI coding agents working on this repo -->
+<!-- Short guidance for AI coding agents working on this repo -->
 
-# Battery Utility Calculator — Copilot instructions
+# Battery Utility Calculator — Copilot instructions (concise)
 
-Goal: Help an AI agent become productive quickly by explaining the project's structure, important data shapes, workflows, and a few known quirks.
+Goal: get an AI agent productive quickly. This repo is a small Python package that models a prosumer (PV + optional battery) dispatch optimizer using Pyomo. Focus on the optimizer, its data inputs, and the tests which are the ground truth.
 
-1) Big picture
-- Single small Python package that models a prosumer (PV + optional battery) energy dispatch optimizer using Pyomo.
-- Core logic lives in `battery_utility_calculator/battery_utility_calculator.py` (classes: `Storage`, `BatteryUtilityCalculator`).
-- Tests live in `tests/test_pricing_framework.py` and exercise high-level scenarios (they instantiate the calculator with simple pandas objects and call `optimize(...)`).
+Core modules
+- `battery_utility_calculator/energy_costs_calculator.py` — EnergyCostCalculator (builds Pyomo model, variables, constraints, objective, exporters).
+- `battery_utility_calculator/battery_utility_calculator.py` — helper functions (calculate_storage_worth, calculate_multiple_storage_worth, calculate_bidding_curve) that call ECC.
+- `battery_utility_calculator/storage.py` — simple `Storage(id:int, c_rate, volume, efficiency)` value object.
 
-2) Key files to read first
-- `battery_utility_calculator/battery_utility_calculator.py` — main model, variables, constraints, objective, result exporters.
-- `tests/test_pricing_framework.py` — concise examples of expected behaviours (use these to create new tests or reproduce issues).
-- `pyproject.toml` — dependencies and dev/test matrix (note: `pyomo`, `highspy` and `pandas` are direct deps).
-- `README.md` — quick run and install instructions.
+Key tests to read
+- `tests/test_BUC.py` and `tests/test_ECC.py` — concise, deterministic examples used as the canonical spec. Copy their small pandas examples when you add new tests or reproduce bugs.
 
-3) Data shapes & APIs (concrete, copyable)
-- Prices: pandas.DataFrame expected columns: `eeg`, `wholesale`, `community`, `grid`. Code references prices via `self.prices.loc[timestep, "<col>"]`.
-- Solar & demand: pandas.Series, aligned with `prices` by index in the intended design.
-- Storage: created via `Storage(id: int, c_rate: float, volume: float, efficiency: float)` and passed to `BatteryUtilityCalculator`.
-- Example from tests:
+Concrete data shapes & minimal examples
+- Prices: pandas.DataFrame (columns: `eeg`, `wholesale`, `community`, `grid`) indexed to timesteps.
+- Demand & solar: pandas.Series aligned with the prices index (integers or DatetimeIndex — see below).
+- Storage: `Storage(id, c_rate, volume, efficiency)`.
+- Example (from tests):
 
 ```py
-prices = pd.DataFrame({"eeg":[0,0,0], "wholesale":[0,0,0], "community":[0,0,0], "grid":[1,1,1]})
-solar = pd.Series([0,0,0])
-demand = pd.Series([1,1,1])
-calc = BatteryUtilityCalculator(Storage(0,1,0,1), prices, solar, demand)
-calc.optimize(solver="highs")
+from battery_utility_calculator.battery_utility_calculator import Storage, calculate_storage_worth
+worth = calculate_storage_worth(
+    baseline_storage=Storage(0,1,0,1),
+    storage_to_calculate=Storage(0,1,1,1),
+    eeg_prices=pd.Series([0,0,0]),
+    wholesale_market_prices=pd.Series([0,0,0]),
+    community_market_prices=pd.Series([0,0,0]),
+    grid_prices=pd.Series([0,1,1]),
+    solar_generation=pd.Series([0,0,0]),
+    demand=pd.Series([1,1,1]),
+    solver="appsi_highs",
+)
 ```
 
-4) Important implementation patterns and naming conventions
-- Model variable names are systematic and map to energy flows: `pv_to_home`, `pv_to_eeg`, `pv_to_storage`, `storage_to_home`, `storage_to_eeg`, `wholesale_to_storage`, `supplier_to_home`, etc.
-- `storage_use_cases` is a list of strings (defaults: `["eeg","wholesale","community","home"]`) and is used as a second index for some variables and storage level bookkeeping.
-- Objective maximizes aggregated cashflows: community_cf + supplier_cf + eeg_cf + wholesale_cf (see `set_model_objective`).
-- Solver is selected by `optimize(solver: str)`; default in code is `gurobi`, but tests use `highs`.
+Important code patterns & conventions
+- Variables map to energy flows with systematic names: `pv_to_home`, `pv_to_eeg`, `pv_to_storage`, `storage_to_home`, `storage_to_eeg`, `wholesale_to_storage`, `supplier_to_home`, etc.
+- `storage_use_cases` (default `['eeg','wholesale','community','home']`) is used as a second index for `pv_to_storage` and `storage_level` and drives per-use-case SOC constraints.
+- Objective: the model maximizes summed cashflows (community + supplier + EEG + wholesale) in `set_model_objective()`.
+- Solver strings: ECC.optimize default is `gurobi`; tests call open solvers like `appsi_highs` (or `highs`). Use the exact tester solver string when running tests.
 
-5) Developer workflows (how to run, test, lint)
-- Install for development and tests: `pip install -e .[test]` (documented in README).
-- Run tests: `pytest` (project has a `tool.pytest.testpaths = "tests"`).
-- Linting: ruff configured in `pyproject.toml` — run `ruff .` as needed.
+Integration & dependencies
+- Pyomo is used for modeling. Solvers must be available in the runtime environment (`highs`, `appsi_highs`, `gurobi`, etc.). `highspy` / appsi-related solvers are referenced in tests/environments.
 
-6) Integration & external dependencies to be aware of
-- Pyomo models: the code builds a `pyo.ConcreteModel()` and relies on external solvers (e.g., `highs`, commercial solvers like `gurobi`). Ensure the solver you call is available in the environment.
-- `highspy` is a listed dependency and provides an open-source solver interface used in tests.
+Project-specific quirks (important for edits)
+- Time index handling: `EnergyCostCalculator.__init__` calls `__check_timeseries_indices__()` which expects identical indices across series and converts `DatetimeIndex` to integer timestep indices while keeping original timestamps in `self.timestamps`. Tests commonly use integer-index Series — adapting indexes is a common source of breakage.
+- Exporters and shape assumptions: exporters assume `storage_use_cases` strings exist and access model variables like `pv_to_storage[t,'home']`. If you change variable indices or use-case names, update all exporters and tests.
+- `Storage.id` is a plain int in code/tests. Some code paths (or future features) may expect iterable storage identifiers; prefer adding a lightweight compatibility layer to accept either an int or list.
 
-7) Known quirks and places to be careful (important for automated edits)
-- Timeseries index expectations: the code defines `__check_timeseries_indices__` (expects pandas DatetimeIndex in UTC), but this method is not called currently — tests use plain integer indices. Do not assume the check is enforced unless you add the call.
-- Shape mismatches / TODOs: several result-exporting helpers assume different variable shapes than how variables are declared (e.g., `pv_to_storage` is declared with indexes `(timestep, use_case)` but exporters iterate `(t,use,sid)` or assume `storage.id` is iterable). These are real issues to watch for when adding features or refactoring.
-- `Storage.id` is currently a simple int in tests and class; some code treats it like an iterable. Prefer adding a migration/compatibility layer (or change `Storage.id` to always be a list) rather than editing exporters in isolation.
-- Default solver string in `optimize()` is `gurobi` — CI/tests call `highs`. Avoid changing defaults without updating tests.
+Developer workflows (quick commands)
+- Install dev/test deps and local editable package: `pip install -e .[test]`.
+- Run full test suite: `pytest -q` (tests live in `tests/`).
+- Run a single test quickly: `pytest -q tests/test_BUC.py::test_calculate_storage_worth`.
 
-8) Suggested small, safe entry tasks for an AI agent
-- Add unit tests reproducing a failing exporter path (e.g., when `storage.id` is a single int vs iterable).
-- Add a single call to `__check_timeseries_indices__` early in `__init__` (and update tests immediately if they rely on integer indices) — this is a targeted refactor with clear scope.
-- Add validation and conversion helpers that accept integer-index time series and convert to a DatetimeIndex with UTC (if desired) — keep it opt-in.
+Small, safe edits an AI agent can start with
+- Add a unit test that reproduces exporter shape mismatches (cover `pv_to_storage` indexing and `storage.id` usage).
+- Add normalization helpers to accept integer or datetime indices and clearly document the conversion behavior.
+- When refactoring model variables or `Storage` shapes, update exporters and tests together.
 
-9) Contacts & conventions
-- Tests are the canonical spec for behaviour — follow `tests/test_pricing_framework.py` when in doubt.
-- Follow ruff rules defined in `pyproject.toml` for formatting and linting.
+Where to look first when debugging
+- `battery_utility_calculator/energy_costs_calculator.py`: inspect `set_model_variables()`, `set_model_constraints()`, `set_model_objective()` and `optimize()`.
+- Use `tests/` as the authoritative behaviour; copy their minimal pandas structures when reproducing problems.
 
-If any section is unclear or you want me to expand examples (for example: adding a small test to lock down `storage.id` behavior), tell me which area and I will iterate.
+If anything here is unclear or you want a short follow-up (for example: a compatibility helper for `Storage.id`, or one failing exporter unit test), tell me which area and I'll iterate.
+<!-- Short, focused guidance for AI coding agents working on this repo -->
