@@ -31,7 +31,7 @@ class EnergyCostCalculator:
         allow_community_to_storage: bool = False,
         allow_storage_to_community: bool = False,
     ):
-        """Optimizer for prosumer energy management, giving price recommendations for given products and given timeframes
+        """Optimizer for prosumer energy management, calculating minimum costs to cover energy demand.
 
         Args:
             storage (Storage) | None: The available storage. None if no storage is available.
