@@ -4,7 +4,6 @@
 
 from typing import Literal
 
-import numpy as np
 import pandas as pd
 
 from battery_utility_calculator import EnergyCostCalculator as ECC
@@ -32,12 +31,12 @@ def calculate_storage_worth(
     Args:
         baseline_storage (Storage): The baseline storage to compare to.
         storage_to_calculate (Storage): The storage to calculate the worth (value) for.
-        demand (pd.Series): Demand timeseries.
-        solar_generation (pd.Series): Solar generation timeseries.
-        grid_prices (pd.Series): Grid prices timeseries.
-        eeg_prices (pd.Series): EEG prices timeseries.
-        community_market_prices (pd.Series): Community market timeseries.
-        wholesale_market_prices (pd.Series): Wholesale market timeseries.
+        demand (pd.Series): Demand timeseries. Values should be in kWh per hour (kW).
+        solar_generation (pd.Series): Solar generation timeseries. Values should be in kWh per hour (kW).
+        grid_prices (pd.Series): Grid prices timeseries. Values should be in EUR per kWh.
+        eeg_prices (pd.Series): EEG prices timeseries. Values should be in EUR per kWh.
+        community_market_prices (pd.Series): Community market timeseries. Values should be in EUR per kWh.
+        wholesale_market_prices (pd.Series): Wholesale market timeseries. ^alues should be in EUR per kWh.
         storage_use_cases (list[str], optional): Use cases for storage. Defaults to ["eeg", "home", "community", "wholesale"].
         allow_community_to_home (bool, optional): Wether to allow using energy from community for home use. Defaults to False.
         allow_community_to_storage (bool, optional): Wether to allow storing energy from community for home use. Defaults to False.
@@ -111,12 +110,12 @@ def calculate_multiple_storage_worth(
     Args:
         baseline_storage (Storage): The baseline storage to compare to.
         storages_to_calculate (list[Storage]): List of storages to calculate worth (value) for.
-        demand (pd.Series): Demand timeseries.
-        solar_generation (pd.Series): Solar generation timeseries.
-        grid_prices (pd.Series): Grid prices timeseries.
-        eeg_prices (pd.Series): EEG prices timeseries.
-        community_market_prices (pd.Series): Community market timeseries.
-        wholesale_market_prices (pd.Series): Wholesale market timeseries.
+        demand (pd.Series): Demand timeseries. Values should be in kWh per hour (kW).
+        solar_generation (pd.Series): Solar generation timeseries. Values should be in kWh per hour (kW).
+        grid_prices (pd.Series): Grid prices timeseries. Values should be in EUR per kWh.
+        eeg_prices (pd.Series): EEG prices timeseries. Values should be in EUR per kWh.
+        community_market_prices (pd.Series): Community market timeseries. Values should be in EUR per kWh.
+        wholesale_market_prices (pd.Series): Wholesale market timeseries. Values should be in EUR per kWh.
         storage_use_cases (list[str], optional): Use cases for storage. Defaults to ["eeg", "home", "community", "wholesale"].
         allow_community_to_home (bool, optional): Wether to allow using energy from community for home use. Defaults to False.
         allow_community_to_storage (bool, optional): Wether to allow storing energy from community for home use. Defaults to False.
