@@ -25,11 +25,14 @@ class EnergyCostCalculator:
         community_market_prices: pd.Series,
         wholesale_market_prices: pd.Series,
         storage_use_cases: list[str] = ["eeg", "wholesale", "community", "home"],
-        allow_pv_to_community: bool = False,
-        allow_storage_to_wholesale: bool = False,
         allow_community_to_home: bool = False,
         allow_community_to_storage: bool = False,
+        allow_pv_to_community: bool = False,
         allow_storage_to_community: bool = False,
+        allow_wholesale_to_home: bool = False,
+        allow_wholesale_to_storage: bool = False,
+        allow_pv_to_wholesale: bool = False,
+        allow_storage_to_wholesale: bool = False,
     ):
         """Optimizer for prosumer energy management, calculating minimum costs to cover energy demand.
 
@@ -57,8 +60,12 @@ class EnergyCostCalculator:
         self.demand = demand.copy()
         self.storage_use_cases = storage_use_cases
 
-        self.allow_pv_to_community = allow_pv_to_community
+        self.allow_wholesale_to_home = allow_wholesale_to_home
+        self.allow_wholesale_to_storage = allow_wholesale_to_storage
+        self.allow_pv_to_wholesale = allow_pv_to_wholesale
         self.allow_storage_to_wholesale = allow_storage_to_wholesale
+
+        self.allow_pv_to_community = allow_pv_to_community
         self.allow_community_to_home = allow_community_to_home
         self.allow_storage_to_community = allow_storage_to_community
         self.allow_community_to_storage = allow_community_to_storage
@@ -125,9 +132,14 @@ class EnergyCostCalculator:
         self.model.pv_to_eeg = pyo.Var(self.timesteps, domain=pyo.NonNegativeReals)
 
         # Selling PV on wholesale
-        self.model.pv_to_wholesale = pyo.Var(
-            self.timesteps, domain=pyo.NonNegativeReals
-        )
+        if self.allow_pv_to_wholesale:
+            self.model.pv_to_wholesale = pyo.Var(
+                self.timesteps, domain=pyo.NonNegativeReals
+            )
+        else:
+            self.model.pv_to_wholesale = pyo.Var(
+                self.timesteps, domain=pyo.NonNegativeReals, bounds=(0, 0)
+            )
 
         # Selling PV on community market
         if self.allow_pv_to_community:
@@ -190,9 +202,14 @@ class EnergyCostCalculator:
         )
 
         # charging storage from wholesale market
-        self.model.wholesale_to_storage = pyo.Var(
-            self.timesteps, domain=pyo.NonNegativeReals
-        )
+        if self.allow_wholesale_to_storage:
+            self.model.wholesale_to_storage = pyo.Var(
+                self.timesteps, domain=pyo.NonNegativeReals
+            )
+        else:
+            self.model.wholesale_to_storage = pyo.Var(
+                self.timesteps, domain=pyo.NonNegativeReals, bounds=(0, 0)
+            )
 
         # charging storage from community market
         # remove bounds for activation
