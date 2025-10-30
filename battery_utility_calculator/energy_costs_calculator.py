@@ -30,9 +30,9 @@ class EnergyCostCalculator:
         allow_pv_to_community: bool = False,
         allow_storage_to_community: bool = False,
         allow_wholesale_to_home: bool = False,
-        allow_wholesale_to_storage: bool = False,
-        allow_pv_to_wholesale: bool = False,
-        allow_storage_to_wholesale: bool = False,
+        allow_wholesale_to_storage: bool = True,
+        allow_pv_to_wholesale: bool = True,
+        allow_storage_to_wholesale: bool = True,
     ):
         """Optimizer for prosumer energy management, calculating minimum costs to cover energy demand.
 
