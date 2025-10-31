@@ -128,6 +128,16 @@ class EnergyCostCalculator:
     def set_model_variables(self):
         log.info("Setting up model variables...")
 
+        # storage level restrction
+        self.model.storage_level = pyo.Var(
+            self.timesteps,
+            self.storage_use_cases,
+            domain=pyo.NonNegativeReals,
+        )
+
+        #############################
+        ##      PV SYSTEM VARS      #
+        #############################
         # Selling PV for EEG
         self.model.pv_to_eeg = pyo.Var(self.timesteps, domain=pyo.NonNegativeReals)
 
@@ -161,13 +171,6 @@ class EnergyCostCalculator:
 
         # using PV energy at home
         self.model.pv_to_home = pyo.Var(self.timesteps, domain=pyo.NonNegativeReals)
-
-        # storage level restrction
-        self.model.storage_level = pyo.Var(
-            self.timesteps,
-            self.storage_use_cases,
-            domain=pyo.NonNegativeReals,
-        )
 
         # selling from storage for EEG
         self.model.storage_to_eeg = pyo.Var(self.timesteps, domain=pyo.NonNegativeReals)
@@ -699,6 +702,37 @@ class EnergyCostCalculator:
         long = df.melt(id_vars=[df.columns[0]], var_name="Use case", value_name="kWh")
         fig = px.line(
             long, x=df.columns[0], y="kWh", color="Use case", title="Storage SOC"
+        )
+
+        if show:
+            fig.show()
+        return fig
+
+    def plot_prices(self, show: bool = True):
+        """Plot prices using plotly.express."""
+        price_df = pd.DataFrame(
+            {
+                "grid_prices": self.grid_prices,
+                "eeg_prices": self.eeg_prices,
+                "community_market_prices": self.community_market_prices,
+                "wholesale_market_prices": self.wholesale_market_prices,
+            }
+        )
+
+        df = price_df.reset_index().rename(
+            columns={
+                price_df.index.name or "index": "t",
+                "grid_prices": "Grid prices",
+                "eeg_prices": "EEG prices",
+                "community_market_prices": "Community market prices",
+                "wholesale_market_prices": "Wholesale market prices",
+            }
+        )
+
+        df = df.drop(columns=[col for col in df.columns if (df[col] == 0).all()])
+        long = df.melt(id_vars=[df.columns[0]], var_name="Price type", value_name="EUR")
+        fig = px.line(
+            long, x=df.columns[0], y="EUR", color="Price type", title="Energy prices"
         )
 
         if show:

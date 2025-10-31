@@ -118,7 +118,7 @@ def test_ECC_negative_prices():
     assert costs == 80
 
 
-def test_ECC__c_rate():
+def test_ECC_c_rate():
     # check if c_rate is respected
     calculator = EnergyCostCalculator(
         storage=Storage(id=0, c_rate=0.5, volume=2, efficiency=1),
@@ -131,3 +131,36 @@ def test_ECC__c_rate():
     )
     costs = calculator.optimize(solver="highs")
     assert costs == -10
+
+
+def test_ECC_wholesale():
+    storage = Storage(id=0, c_rate=1, volume=1, efficiency=1)
+
+    storage = Storage(id=0, c_rate=1, volume=1, efficiency=1)
+    # no demand, just buying from wholesale when price is 3 and selling again when price is 5
+    # should be able to just do this once, as we only have volume of 1
+    ecc = EnergyCostCalculator(
+        storage=storage,
+        demand=pd.Series([0, 0, 0, 0]),
+        solar_generation=pd.Series([0, 0, 0, 0]),
+        grid_prices=pd.Series([10, 10, 10, 10]),
+        eeg_prices=pd.Series([0, 0, 0, 0]),
+        community_market_prices=pd.Series([0, 0, 0, 0]),
+        wholesale_market_prices=pd.Series([3, 3, 5, 5]),
+    )
+    costs = ecc.optimize(solver="highs")
+    assert costs == 2
+
+    # same as above, but volume of 2, so should be able to do two times for total gain of 4
+    storage = Storage(id=0, c_rate=1, volume=2, efficiency=1)
+    ecc = EnergyCostCalculator(
+        storage=storage,
+        demand=pd.Series([0, 0, 0, 0]),
+        solar_generation=pd.Series([0, 0, 0, 0]),
+        grid_prices=pd.Series([10, 10, 10, 10]),
+        eeg_prices=pd.Series([0, 0, 0, 0]),
+        community_market_prices=pd.Series([0, 0, 0, 0]),
+        wholesale_market_prices=pd.Series([3, 3, 5, 5]),
+    )
+    costs = ecc.optimize(solver="highs")
+    assert costs == 4
