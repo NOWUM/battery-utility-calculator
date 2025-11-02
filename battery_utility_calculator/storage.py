@@ -4,7 +4,14 @@
 
 
 class Storage:
-    def __init__(self, id: int, c_rate: float, volume: float, efficiency: float):
+    def __init__(
+        self,
+        id: int,
+        c_rate: float,
+        volume: float,
+        charge_efficiency: float = 1,
+        discharge_efficiency: float = 1,
+    ):
         """Represents a storage unit for energy.
 
         Args:
@@ -16,4 +23,5 @@ class Storage:
         self.id = id
         self.c_rate = c_rate
         self.volume = volume
-        self.efficiency = efficiency
+        self.charge_efficiency = charge_efficiency
+        self.discharge_efficiency = discharge_efficiency

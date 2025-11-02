@@ -51,7 +51,9 @@ class EnergyCostCalculator:
         if storage:
             self.storage = storage
         else:
-            self.storage = Storage(id=0, c_rate=1, volume=0, efficiency=1)
+            self.storage = Storage(
+                id=0, c_rate=1, volume=0, charge_efficiency=1, discharge_efficiency=1
+            )
 
         self.grid_prices = grid_prices.copy()
         self.eeg_prices = eeg_prices.copy()
@@ -60,6 +62,8 @@ class EnergyCostCalculator:
         self.solar_generation = solar_generation.copy()
         self.demand = demand.copy()
         self.storage_use_cases = storage_use_cases
+        self.charge_efficiency = self.storage.charge_efficiency
+        self.discharge_efficiency = self.storage.discharge_efficiency
 
         self.allow_wholesale_to_home = allow_wholesale_to_home
         self.allow_wholesale_to_storage = allow_wholesale_to_storage
@@ -346,18 +350,21 @@ class EnergyCostCalculator:
 
             def restrict_soc_eeg(model, timestep):
                 if timestep == self.timesteps[0]:
-                    return (
-                        model.storage_level[timestep, "eeg"]
-                        == model.pv_to_storage[timestep, "eeg"]
-                        - model.storage_to_eeg[timestep]
+                    return model.storage_level[
+                        timestep, "eeg"
+                    ] == self.charge_efficiency * model.pv_to_storage[
+                        timestep, "eeg"
+                    ] - (
+                        (1 / self.discharge_efficiency) * model.storage_to_eeg[timestep]
                     )
                 else:
                     previous_timestep = timestep - 1
-                    return (
-                        model.storage_level[timestep, "eeg"]
-                        == model.storage_level[previous_timestep, "eeg"]
-                        + model.pv_to_storage[timestep, "eeg"]
-                        - model.storage_to_eeg[timestep]
+                    return model.storage_level[timestep, "eeg"] == model.storage_level[
+                        previous_timestep, "eeg"
+                    ] + self.charge_efficiency * model.pv_to_storage[
+                        timestep, "eeg"
+                    ] - (
+                        (1 / self.discharge_efficiency) * model.storage_to_eeg[timestep]
                     )
 
             self.model.soc_eeg_restriction = pyo.Constraint(
@@ -368,18 +375,25 @@ class EnergyCostCalculator:
 
             def restrict_soc_wholesale(model, timestep):
                 if timestep == self.timesteps[0]:
-                    return (
-                        model.storage_level[timestep, "wholesale"]
-                        == model.wholesale_to_storage[timestep]
-                        - model.storage_to_wholesale[timestep]
+                    return model.storage_level[
+                        timestep, "wholesale"
+                    ] == self.charge_efficiency * model.wholesale_to_storage[
+                        timestep
+                    ] - (
+                        (1 / self.discharge_efficiency)
+                        * model.storage_to_wholesale[timestep]
                     )
                 else:
                     previous_timestep = timestep - 1
-                    return (
-                        model.storage_level[timestep, "wholesale"]
-                        == model.storage_level[previous_timestep, "wholesale"]
-                        + model.wholesale_to_storage[timestep]
-                        - model.storage_to_wholesale[timestep]
+                    return model.storage_level[
+                        timestep, "wholesale"
+                    ] == model.storage_level[
+                        previous_timestep, "wholesale"
+                    ] + self.charge_efficiency * model.wholesale_to_storage[
+                        timestep
+                    ] - (
+                        (1 / self.discharge_efficiency)
+                        * model.storage_to_wholesale[timestep]
                     )
 
             self.model.soc_wholesale_restriction = pyo.Constraint(
@@ -390,18 +404,25 @@ class EnergyCostCalculator:
 
             def restrict_soc_community(model, timestep):
                 if timestep == self.timesteps[0]:
-                    return (
-                        model.storage_level[timestep, "community"]
-                        == model.community_to_storage[timestep]
-                        - model.storage_to_community[timestep]
+                    return model.storage_level[
+                        timestep, "community"
+                    ] == self.charge_efficiency * model.community_to_storage[
+                        timestep
+                    ] - (
+                        (1 / self.discharge_efficiency)
+                        * model.storage_to_community[timestep]
                     )
                 else:
                     previous_timestep = timestep - 1
-                    return (
-                        model.storage_level[timestep, "community"]
-                        == model.storage_level[previous_timestep, "community"]
-                        + model.community_to_storage[timestep]
-                        - model.storage_to_community[timestep]
+                    return model.storage_level[
+                        timestep, "community"
+                    ] == model.storage_level[
+                        previous_timestep, "community"
+                    ] + self.charge_efficiency * model.community_to_storage[
+                        timestep
+                    ] - (
+                        (1 / self.discharge_efficiency)
+                        * model.storage_to_community[timestep]
                     )
 
             self.model.soc_community_restriction = pyo.Constraint(
@@ -412,20 +433,27 @@ class EnergyCostCalculator:
 
             def restrict_soc_home(model, timestep):
                 if timestep == self.timesteps[0]:
-                    return (
-                        model.storage_level[timestep, "home"]
-                        == model.supplier_to_storage[timestep]
-                        + model.pv_to_storage[timestep, "home"]
-                        - model.storage_to_home[timestep]
+                    return model.storage_level[
+                        timestep, "home"
+                    ] == self.charge_efficiency * model.supplier_to_storage[
+                        timestep
+                    ] + self.charge_efficiency * model.pv_to_storage[
+                        timestep, "home"
+                    ] - (
+                        (1 / self.discharge_efficiency)
+                        * model.storage_to_home[timestep]
                     )
                 else:
                     previous_timestep = timestep - 1
-                    return (
-                        model.storage_level[timestep, "home"]
-                        == model.storage_level[previous_timestep, "home"]
-                        + model.supplier_to_storage[timestep]
-                        + model.pv_to_storage[timestep, "home"]
-                        - model.storage_to_home[timestep]
+                    return model.storage_level[timestep, "home"] == model.storage_level[
+                        previous_timestep, "home"
+                    ] + self.charge_efficiency * model.supplier_to_storage[
+                        timestep
+                    ] + self.charge_efficiency * model.pv_to_storage[
+                        timestep, "home"
+                    ] - (
+                        (1 / self.discharge_efficiency)
+                        * model.storage_to_home[timestep]
                     )
 
             self.model.soc_home_restriction = pyo.Constraint(
