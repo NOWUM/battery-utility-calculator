@@ -6,6 +6,7 @@ import logging
 
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import pyomo.environ as pyo
 
 from battery_utility_calculator import Storage
@@ -527,7 +528,67 @@ class EnergyCostCalculator:
 
         return self.model.objective()
 
-    def get_demand_coverage_timeseries_df(self):
+    def get_energy_flows(self) -> pd.DataFrame:
+        energy_flows = pd.DataFrame(index=self.timesteps)
+
+        energy_flows["pv_to_eeg"] = [
+            self.model.pv_to_eeg[timestep].value for timestep in self.timesteps
+        ]
+        energy_flows["pv_to_wholesale"] = [
+            self.model.pv_to_wholesale[timestep].value for timestep in self.timesteps
+        ]
+        energy_flows["pv_to_community"] = [
+            self.model.pv_to_community[timestep].value for timestep in self.timesteps
+        ]
+        energy_flows["pv_to_home"] = [
+            self.model.pv_to_home[timestep].value for timestep in self.timesteps
+        ]
+        energy_flows["pv_to_storage_for_home"] = [
+            self.model.pv_to_storage[timestep, "home"].value
+            for timestep in self.timesteps
+        ]
+        energy_flows["pv_to_storage_for_eeg"] = [
+            self.model.pv_to_storage[timestep, "eeg"].value
+            for timestep in self.timesteps
+        ]
+        energy_flows["pv_to_storage_for_wholesale"] = [
+            self.model.pv_to_storage[timestep, "wholesale"].value
+            for timestep in self.timesteps
+        ]
+
+        energy_flows["storage_to_wholesale"] = [
+            self.model.storage_to_wholesale[timestep].value
+            for timestep in self.timesteps
+        ]
+        energy_flows["wholesale_to_storage"] = [
+            self.model.wholesale_to_storage[timestep].value
+            for timestep in self.timesteps
+        ]
+
+        energy_flows["storage_to_eeg"] = [
+            self.model.storage_to_eeg[timestep].value for timestep in self.timesteps
+        ]
+        energy_flows["storage_to_community"] = [
+            self.model.storage_to_community[timestep].value
+            for timestep in self.timesteps
+        ]
+        energy_flows["storage_to_home"] = [
+            self.model.storage_to_home[timestep].value for timestep in self.timesteps
+        ]
+
+        energy_flows["supplier_to_storage"] = [
+            self.model.supplier_to_storage[timestep].value
+            for timestep in self.timesteps
+        ]
+        energy_flows["supplier_to_home"] = [
+            self.model.supplier_to_home[timestep].value for timestep in self.timesteps
+        ]
+
+        energy_flows["demand"] = self.demand.copy()
+
+        return energy_flows
+
+    def get_demand_coverage_timeseries_df(self) -> pd.DataFrame:
         demand_coverage = pd.DataFrame(index=self.timesteps)
 
         demand_coverage["demand"] = self.demand.copy()
@@ -546,7 +607,7 @@ class EnergyCostCalculator:
 
         return demand_coverage
 
-    def get_solar_generation_timeseries_df(self):
+    def get_solar_generation_timeseries_df(self) -> pd.DataFrame:
         pv_usage = pd.DataFrame(index=self.timesteps)
 
         pv_usage["generation"] = self.solar_generation.loc[self.timesteps]
@@ -574,7 +635,7 @@ class EnergyCostCalculator:
 
         return pv_usage
 
-    def get_storage_timeseries_df(self):
+    def get_storage_timeseries_df(self) -> pd.DataFrame:
         storage_usage = pd.DataFrame(index=self.timesteps)
 
         for use_case in self.storage_use_cases:
@@ -600,7 +661,43 @@ class EnergyCostCalculator:
             "storage": storage_timeseries,
         }
 
-    def plot_demand_coverage(self, show: bool = True):
+    def plot_energy_flows(self, show: bool = True) -> go.Figure:
+        """Quick energy flow plot using plotly.express."""
+        energy_flows = self.get_energy_flows()
+
+        df = energy_flows.reset_index().rename(
+            columns={
+                energy_flows.index.name or "index": "t",
+                "pv_to_eeg": "PV to EEG",
+                "pv_to_wholesale": "PV to wholesale",
+                "pv_to_community": "PV to community",
+                "pv_to_home": "PV to home",
+                "storage_to_eeg": "Storage to EEG",
+                "storage_to_wholesale": "Storage to wholesale",
+                "storage_to_community": "Storage to community",
+                "storage_to_home": "Storage to home",
+                "wholesale_to_storage": "Wholesale to storage",
+                "supplier_to_storage": "Supplier to storage",
+                "supplier_to_home": "Supplier to home",
+            }
+        )
+
+        df = df.drop(columns=[col for col in df.columns if (df[col] == 0).all()])
+
+        long = df.melt(
+            id_vars=[df.columns[0]],
+            var_name="Flow",
+            value_name="kWh",
+        )
+        fig = px.line(
+            long, x=df.columns[0], y="kWh", color="Flow", title="Energy flows"
+        )
+
+        if show:
+            fig.show()
+        return fig
+
+    def plot_demand_coverage(self, show: bool = True) -> go.Figure:
         """Quick stacked bar + demand line using plotly.express."""
         demand_df = self.get_demand_coverage_timeseries_df()
 
@@ -640,7 +737,7 @@ class EnergyCostCalculator:
             fig.show()
         return fig
 
-    def plot_solar_generation(self, show: bool = True):
+    def plot_solar_generation(self, show: bool = True) -> go.Figure:
         """Quick PV generation and usage plot using plotly.express."""
         pv_df = self.get_solar_generation_timeseries_df()
 
@@ -684,7 +781,7 @@ class EnergyCostCalculator:
             fig.show()
         return fig
 
-    def plot_storage_timeseries(self, show: bool = True):
+    def plot_storage_timeseries(self, show: bool = True) -> go.Figure:
         """Plot storage SOC per use case using plotly.express."""
         storage_df = self.get_storage_timeseries_df()
 
