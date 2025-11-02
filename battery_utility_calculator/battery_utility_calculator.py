@@ -98,12 +98,9 @@ def calculate_multiple_storage_worth(
     eeg_prices: pd.Series,
     community_market_prices: pd.Series,
     wholesale_market_prices: pd.Series,
-    storage_use_cases: list[str] = ["eeg", "home", "community", "wholesale"],
-    allow_community_to_home: bool = False,
-    allow_community_to_storage: bool = False,
-    allow_pv_to_community: bool = False,
-    allow_storage_to_wholesale: bool = False,
     solver: str = "gurobi",
+    *args,
+    **kwargs,
 ) -> pd.DataFrame:
     """Calculates the worth (value) of multiple storages compared to a baseline storage.
 
@@ -137,11 +134,8 @@ def calculate_multiple_storage_worth(
         eeg_prices=eeg_prices,
         community_market_prices=community_market_prices,
         wholesale_market_prices=wholesale_market_prices,
-        storage_use_cases=storage_use_cases,
-        allow_community_to_home=allow_community_to_home,
-        allow_community_to_storage=allow_community_to_storage,
-        allow_pv_to_community=allow_pv_to_community,
-        allow_storage_to_wholesale=allow_storage_to_wholesale,
+        *args,
+        **kwargs,
     )
     baseline_costs = baseline_ecc.optimize(solver=solver)
 
@@ -166,11 +160,8 @@ def calculate_multiple_storage_worth(
             eeg_prices=eeg_prices,
             community_market_prices=community_market_prices,
             wholesale_market_prices=wholesale_market_prices,
-            storage_use_cases=storage_use_cases,
-            allow_community_to_home=allow_community_to_home,
-            allow_community_to_storage=allow_community_to_storage,
-            allow_pv_to_community=allow_pv_to_community,
-            allow_storage_to_wholesale=allow_storage_to_wholesale,
+            *args,
+            **kwargs,
         )
         costs = ecc.optimize(solver=solver)
         storage_worth = costs - baseline_costs
