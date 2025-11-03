@@ -140,13 +140,33 @@ def calculate_multiple_storage_worth(
     baseline_costs = baseline_ecc.optimize(solver=solver)
 
     df = pd.DataFrame(
-        columns=["id", "c_rate", "volume", "efficiency", "costs", "worth"]
+        columns=[
+            "id",
+            "c_rate",
+            "volume",
+            "charge_efficiency",
+            "discharge_efficiency",
+            "costs",
+            "worth",
+        ]
     )
-    df.loc[0, ["id", "c_rate", "volume", "efficiency", "costs", "worth"]] = [
+    df.loc[
+        0,
+        [
+            "id",
+            "c_rate",
+            "volume",
+            "charge_efficiency",
+            "discharge_efficiency",
+            "costs",
+            "worth",
+        ],
+    ] = [
         baseline_storage.id,
         baseline_storage.c_rate,
         baseline_storage.volume,
-        baseline_storage.efficiency,
+        baseline_storage.charge_efficiency,
+        baseline_storage.discharge_efficiency,
         baseline_costs,
         0,
     ]
@@ -170,7 +190,8 @@ def calculate_multiple_storage_worth(
         stor_df["id"] = [storage.id]
         stor_df["c_rate"] = [storage.c_rate]
         stor_df["volume"] = [storage.volume]
-        stor_df["efficiency"] = [storage.efficiency]
+        stor_df["charge_efficiency"] = [storage.charge_efficiency]
+        stor_df["discharge_efficiency"] = [storage.discharge_efficiency]
         stor_df["costs"] = [costs]
         stor_df["worth"] = [storage_worth]
 
@@ -203,6 +224,12 @@ def calculate_bidding_curve(
     else:
         raise ValueError("buy_or_sell_side has to be either 'buyer' or 'seller'")
 
+    original_costs = df["costs"].copy()
+
     df = df.diff().dropna().reset_index(drop=True).abs()
+    df["costs"] = original_costs
+    df["cumulative_volume"] = df["volume"].cumsum()
     df.rename(columns={"worth": "marginal_price"}, inplace=True)
+    df = df[df["volume"] != 0].reset_index(drop=True)
+    df["marginal_price_per_kwh"] = df["marginal_price"] / df["volume"]
     return df
