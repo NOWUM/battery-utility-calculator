@@ -19,6 +19,7 @@ def calculate_storage_worth(
     eeg_prices: pd.Series,
     community_market_prices: pd.Series,
     wholesale_market_prices: pd.Series,
+    hours_per_timestep: int | float = 1,
     storage_use_cases: list[str] = ["eeg", "home", "community", "wholesale"],
     allow_community_to_home: bool = False,
     allow_community_to_storage: bool = False,
@@ -36,13 +37,13 @@ def calculate_storage_worth(
         grid_prices (pd.Series): Grid prices timeseries. Values should be in EUR per kWh.
         eeg_prices (pd.Series): EEG prices timeseries. Values should be in EUR per kWh.
         community_market_prices (pd.Series): Community market timeseries. Values should be in EUR per kWh.
-        wholesale_market_prices (pd.Series): Wholesale market timeseries. ^alues should be in EUR per kWh.
+        wholesale_market_prices (pd.Series): Wholesale market timeseries. Values should be in EUR per kWh.
+        hours_per_timestep (int | float, optional): Hours per timestep, e.g. 0.25 for 15-minute intervals. Defaults to 1.
         storage_use_cases (list[str], optional): Use cases for storage. Defaults to ["eeg", "home", "community", "wholesale"].
         allow_community_to_home (bool, optional): Wether to allow using energy from community for home use. Defaults to False.
         allow_community_to_storage (bool, optional): Wether to allow storing energy from community for home use. Defaults to False.
         allow_pv_to_community (bool, optional): Wether to allow selling PV energy to community. Defaults to False.
         allow_storage_to_wholesale (bool, optional): Wether to allow selling from storage to wholesale market. Defaults to False.
-        check_timeseries (bool, optional): Wether to check time series. Defaults to True.
         solver (str, optional): Which solver to use. Defaults to "gurobi".
 
     Returns:
@@ -58,6 +59,7 @@ def calculate_storage_worth(
         eeg_prices=eeg_prices,
         community_market_prices=community_market_prices,
         wholesale_market_prices=wholesale_market_prices,
+        hours_per_timestep=hours_per_timestep,
         storage_use_cases=storage_use_cases,
         allow_community_to_home=allow_community_to_home,
         allow_community_to_storage=allow_community_to_storage,
@@ -75,6 +77,7 @@ def calculate_storage_worth(
         eeg_prices=eeg_prices,
         community_market_prices=community_market_prices,
         wholesale_market_prices=wholesale_market_prices,
+        hours_per_timestep=hours_per_timestep,
         storage_use_cases=storage_use_cases,
         allow_community_to_home=allow_community_to_home,
         allow_community_to_storage=allow_community_to_storage,
@@ -224,10 +227,16 @@ def calculate_bidding_curve(
     else:
         raise ValueError("buy_or_sell_side has to be either 'buyer' or 'seller'")
 
-    original_costs = df["costs"].copy()
+    use_orig_costs = "costs" in df.columns
+
+    if use_orig_costs:
+        original_costs = df["costs"].copy()
 
     df = df.diff().dropna().reset_index(drop=True).abs()
-    df["costs"] = original_costs
+
+    if use_orig_costs:
+        df["costs"] = original_costs
+
     df["cumulative_volume"] = df["volume"].cumsum()
     df.rename(columns={"worth": "marginal_price"}, inplace=True)
     df = df[df["volume"] != 0].reset_index(drop=True)

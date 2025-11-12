@@ -25,6 +25,7 @@ class EnergyCostCalculator:
         eeg_prices: pd.Series,
         community_market_prices: pd.Series,
         wholesale_market_prices: pd.Series,
+        hours_per_timestep: int | float = 1,
         storage_use_cases: list[str] = ["eeg", "wholesale", "community", "home"],
         allow_community_to_home: bool = False,
         allow_community_to_storage: bool = False,
@@ -39,12 +40,13 @@ class EnergyCostCalculator:
 
         Args:
             storage (Storage) | None: The available storage. None if no storage is available.
-            demand (pd.Series): The demand data for the optimization. Values should be in kWh per hour (kW).
-            solar_generation (pd.Series): The solar generation data for the optimization. Values should be in kWh per hour (kW).
+            demand (pd.Series): The demand data for the optimization. Values should be in kW.
+            solar_generation (pd.Series): The solar generation data for the optimization. Values should be in kW.
             grid_prices (pd.Series): The grid prices for the optimization. Values should be in EUR per kWh.
             eeg_prices (pd.Series): The EEG prices for the optimization. Values should be in EUR per kWh.
             community_market_prices (pd.Series): The community market prices for the optimization. Values should be in EUR per kWh.
             wholesale_market_prices (pd.Series): The wholesale market prices for the optimization. Values should be in EUR per kWh.
+            hours_per_timestep (int | float): Hours per timesteps, e. g. 0.25 equals quarter hour.
             storage_use_cases (list[str]): The use cases for energy storage. Allowed values are "eeg", "wholesale", "community", "home"
         """
 
@@ -62,6 +64,7 @@ class EnergyCostCalculator:
         self.solar_generation = solar_generation.copy()
         self.demand = demand.copy()
         self.storage_use_cases = storage_use_cases
+        self.hours_per_timestep = hours_per_timestep
         self.charge_efficiency = self.storage.charge_efficiency
         self.discharge_efficiency = self.storage.discharge_efficiency
 
@@ -290,7 +293,7 @@ class EnergyCostCalculator:
             self.timesteps, rule=restrict_solar_gen
         )
 
-        # energy flow TO storage must be smaller than c_rate
+        # energy flow TO storage must be smaller than c_rate * hours_per_timestep
         def restrict_storage_charge(model, timestep):
             return (
                 sum(
@@ -299,21 +302,21 @@ class EnergyCostCalculator:
                 + model.wholesale_to_storage[timestep]
                 + model.community_to_storage[timestep]
                 + model.supplier_to_storage[timestep]
-                <= self.storage.c_rate * self.storage.volume
+                <= self.storage.c_rate * self.storage.volume * self.hours_per_timestep
             )
 
         self.model.storage_charge_restriction = pyo.Constraint(
             self.timesteps, rule=restrict_storage_charge
         )
 
-        # energy flow FROM storage must be smaller than c_rate
+        # energy flow FROM storage must be smaller than c_rate * hours_per_timestep
         def restrict_storage_discharge(model, timestep):
             return (
                 +model.storage_to_eeg[timestep]
                 + model.storage_to_wholesale[timestep]
                 + model.storage_to_community[timestep]
                 + model.storage_to_home[timestep]
-                <= self.storage.c_rate * self.storage.volume
+                <= self.storage.c_rate * self.storage.volume * self.hours_per_timestep
             )
 
         self.model.storage_discharge_restriction = pyo.Constraint(
@@ -471,24 +474,28 @@ class EnergyCostCalculator:
             sum(
                 self.model.storage_to_community[timestep]
                 * self.community_market_prices.loc[timestep]
+                * self.hours_per_timestep
                 for timestep in self.timesteps
             )
             # selling from pv to community market
             + sum(
                 self.model.pv_to_community[timestep]
                 * self.community_market_prices.loc[timestep]
+                * self.hours_per_timestep
                 for timestep in self.timesteps
             )
             # buying from community market to storage
             - sum(
                 self.model.community_to_storage[timestep]
                 * self.community_market_prices.loc[timestep]
+                * self.hours_per_timestep
                 for timestep in self.timesteps
             )
             # buying from community market to home
             - sum(
                 self.model.community_to_home[timestep]
                 * self.community_market_prices.loc[timestep]
+                * self.hours_per_timestep
                 for timestep in self.timesteps
             )
         )
@@ -499,11 +506,14 @@ class EnergyCostCalculator:
             -sum(
                 self.model.supplier_to_storage[timestep]
                 * self.grid_prices.loc[timestep]
+                * self.hours_per_timestep
                 for timestep in self.timesteps
             )
             # buying energy from supplier to home
             - sum(
-                self.model.supplier_to_home[timestep] * self.grid_prices.loc[timestep]
+                self.model.supplier_to_home[timestep]
+                * self.grid_prices.loc[timestep]
+                * self.hours_per_timestep
                 for timestep in self.timesteps
             )
         )
@@ -512,12 +522,16 @@ class EnergyCostCalculator:
         eeg_cf = (
             # selling from storage for EEG
             sum(
-                self.model.storage_to_eeg[timestep] * self.eeg_prices.loc[timestep]
+                self.model.storage_to_eeg[timestep]
+                * self.eeg_prices.loc[timestep]
+                * self.hours_per_timestep
                 for timestep in self.timesteps
             )
             # selling from PV for EEG
             + sum(
-                self.model.pv_to_eeg[timestep] * self.eeg_prices.loc[timestep]
+                self.model.pv_to_eeg[timestep]
+                * self.eeg_prices.loc[timestep]
+                * self.hours_per_timestep
                 for timestep in self.timesteps
             )
         )
@@ -528,12 +542,14 @@ class EnergyCostCalculator:
             sum(
                 self.model.storage_to_wholesale[timestep]
                 * self.wholesale_market_prices.loc[timestep]
+                * self.hours_per_timestep
                 for timestep in self.timesteps
             )
             # buying from wholesale to storage
             - sum(
                 self.model.wholesale_to_storage[timestep]
                 * self.wholesale_market_prices.loc[timestep]
+                * self.hours_per_timestep
                 for timestep in self.timesteps
             )
         )

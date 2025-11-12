@@ -211,3 +211,19 @@ def test_ECC_charge_discharge_eff():
     )
     costs = calculator.optimize(solver="highs")
     assert costs == -1.75
+
+
+def test_ECC_hours_per_timestep():
+    # using 1kW each timestep so 1kWh in total (0.25hours per timestep)
+    calculator = EnergyCostCalculator(
+        storage=Storage(id=0, c_rate=1, volume=0),
+        eeg_prices=pd.Series([0, 0, 0, 0]),
+        wholesale_market_prices=pd.Series([0, 0, 0, 0]),
+        community_market_prices=pd.Series([0, 0, 0, 0]),
+        grid_prices=pd.Series([1, 1, 1, 1]),
+        solar_generation=pd.Series([0, 0, 0, 0]),
+        demand=pd.Series([1, 1, 1, 1]),
+        hours_per_timestep=0.25,
+    )
+    costs = calculator.optimize(solver="highs")
+    assert costs == -1
