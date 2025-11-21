@@ -705,6 +705,15 @@ class EnergyCostCalculator:
 
         return storage_usage
 
+    def get_storage_charge_timeseries_df(self) -> pd.DataFrame:
+        charge_df = self.get_storage_soc_timeseries_df()
+        charge_df.loc[
+            charge_df.index[0] - pd.Timedelta(hours=self.hours_per_timestep), :
+        ] = 0
+        charge_df = charge_df.sort_index().diff().dropna()
+
+        return charge_df
+
     def output_results(self):
         if not self.is_optimized:
             raise ValueError(
@@ -841,7 +850,7 @@ class EnergyCostCalculator:
             fig.show()
         return fig
 
-    def plot_storage_timeseries(self, show: bool = True) -> go.Figure:
+    def plot_storage_soc_timeseries(self, show: bool = True) -> go.Figure:
         """Plot storage SOC per use case using plotly.express."""
         storage_df = self.get_storage_soc_timeseries_df()
 
@@ -859,6 +868,30 @@ class EnergyCostCalculator:
         long = df.melt(id_vars=[df.columns[0]], var_name="Use case", value_name="kWh")
         fig = px.line(
             long, x=df.columns[0], y="kWh", color="Use case", title="Storage SOC"
+        )
+
+        if show:
+            fig.show()
+        return fig
+
+    def plot_storage_charge_timeseries(self, show: bool = True) -> go.Figure:
+        """Plot storage charge per use case using plotly.express."""
+        storage_df = self.get_storage_charge_timeseries_df()
+
+        df = storage_df.reset_index().rename(
+            columns={
+                "soc_home": "Home",
+                "soc_eeg": "EEG",
+                "soc_wholesale": "Wholesale",
+                "soc_community": "Community",
+                "use_case": "Use case",
+            }
+        )
+
+        df = df.drop(columns=[col for col in df.columns if (df[col] == 0).all()])
+        long = df.melt(id_vars=[df.columns[0]], var_name="Use case", value_name="kW")
+        fig = px.line(
+            long, x=df.columns[0], y="kW", color="Use case", title="Charge / Discharge"
         )
 
         if show:
