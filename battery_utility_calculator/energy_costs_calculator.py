@@ -80,17 +80,17 @@ class EnergyCostCalculator:
 
         self.timesteps = list(range(len(self.demand.index)))
 
-        self.__check_timeseries_indices__()
-
+        # save timestamps from orignal index
         self.start = self.demand.index[0]
         self.end = self.demand.index[-1]
-
         if isinstance(self.demand.index, pd.DatetimeIndex):
             self.timestamps = pd.date_range(
                 start=self.start, end=self.end, periods=len(self.demand)
             )
         else:
             self.timestamps = self.timesteps
+
+        self.__check_timeseries_indices__()
 
         self.solar_generation = solar_generation
         self.demand = demand
@@ -630,6 +630,10 @@ class EnergyCostCalculator:
 
         energy_flows["demand"] = self.demand.copy()
 
+        energy_flows["index"] = self.timestamps.copy()
+        energy_flows.set_index("index", inplace=True)
+        energy_flows.index.name = None
+
         return energy_flows
 
     def get_demand_coverage_timeseries_df(self) -> pd.DataFrame:
@@ -648,6 +652,10 @@ class EnergyCostCalculator:
         demand_coverage["from_community"] = [
             self.model.community_to_home[timestep].value for timestep in self.timesteps
         ]
+
+        demand_coverage["index"] = self.timestamps.copy()
+        demand_coverage.set_index("index", inplace=True)
+        demand_coverage.index.name = None
 
         return demand_coverage
 
@@ -677,15 +685,23 @@ class EnergyCostCalculator:
             self.model.pv_to_storage[t, "community"].value for t in self.timesteps
         ]
 
+        pv_usage["index"] = self.timestamps.copy()
+        pv_usage.set_index("index", inplace=True)
+        pv_usage.index.name = None
+
         return pv_usage
 
-    def get_storage_timeseries_df(self) -> pd.DataFrame:
+    def get_storage_soc_timeseries_df(self) -> pd.DataFrame:
         storage_usage = pd.DataFrame(index=self.timesteps)
 
         for use_case in self.storage_use_cases:
             storage_usage[f"soc_{use_case}"] = [
                 self.model.storage_level[t, use_case].value for t in self.timesteps
             ]
+
+        storage_usage["index"] = self.timestamps.copy()
+        storage_usage.set_index("index", inplace=True)
+        storage_usage.index.name = None
 
         return storage_usage
 
@@ -697,7 +713,7 @@ class EnergyCostCalculator:
 
         demand_timeseries = self.get_demand_coverage_timeseries_df()
         pv_timeseries = self.get_solar_generation_timeseries_df()
-        storage_timeseries = self.get_storage_timeseries_df()
+        storage_timeseries = self.get_storage_soc_timeseries_df()
 
         return {
             "demand": demand_timeseries,
@@ -827,7 +843,7 @@ class EnergyCostCalculator:
 
     def plot_storage_timeseries(self, show: bool = True) -> go.Figure:
         """Plot storage SOC per use case using plotly.express."""
-        storage_df = self.get_storage_timeseries_df()
+        storage_df = self.get_storage_soc_timeseries_df()
 
         df = storage_df.reset_index().rename(
             columns={
