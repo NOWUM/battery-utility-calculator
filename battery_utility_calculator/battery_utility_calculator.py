@@ -25,8 +25,9 @@ def calculate_storage_worth(
     allow_community_to_storage: bool = False,
     allow_pv_to_community: bool = False,
     allow_storage_to_wholesale: bool = False,
+    return_charge_timeseries: bool = False,
     solver: str = "gurobi",
-) -> float:
+) -> dict | float:
     """Calculates the worth (value) of a single storage (compared to a baseline storage).
 
     Args:
@@ -44,10 +45,11 @@ def calculate_storage_worth(
         allow_community_to_storage (bool, optional): Wether to allow storing energy from community for home use. Defaults to False.
         allow_pv_to_community (bool, optional): Wether to allow selling PV energy to community. Defaults to False.
         allow_storage_to_wholesale (bool, optional): Wether to allow selling from storage to wholesale market. Defaults to False.
+        return_charge_timeseries (bool, optional): If True, returns dict with charge timeseries data. If False, returns only worth. Defaults to False.
         solver (str, optional): Which solver to use. Defaults to "gurobi".
 
     Returns:
-        float: Worth (value) of the storage.
+        float or dict: If return_charge_timeseries is False (default), returns worth as float. If True, returns dict with keys 'worth', 'baseline_charge_timeseries', 'storage_charge_timeseries'.
     """
 
     # calculate baseline costs
@@ -89,7 +91,18 @@ def calculate_storage_worth(
     # storage worth is difference between baseline and new storage
     storage_worth = to_calc_costs - baseline_costs
 
-    return storage_worth
+    if return_charge_timeseries:
+        # Get storage charge timeseries for both
+        baseline_charge = baseline_ecc.get_storage_charge_timeseries_df()
+        storage_charge = to_calc_ecc.get_storage_charge_timeseries_df()
+
+        return {
+            "worth": storage_worth,
+            "baseline_charge_ts": baseline_charge,
+            "storage_to_calc_charge_ts": storage_charge,
+        }
+    else:
+        return storage_worth
 
 
 def calculate_multiple_storage_worth(
@@ -101,10 +114,11 @@ def calculate_multiple_storage_worth(
     eeg_prices: pd.Series,
     community_market_prices: pd.Series,
     wholesale_market_prices: pd.Series,
+    return_charge_timeseries: bool = False,
     solver: str = "gurobi",
     *args,
     **kwargs,
-) -> pd.DataFrame:
+) -> dict | pd.DataFrame:
     """Calculates the worth (value) of multiple storages compared to a baseline storage.
 
     Args:
@@ -121,12 +135,20 @@ def calculate_multiple_storage_worth(
         allow_community_to_storage (bool, optional): Wether to allow storing energy from community for home use. Defaults to False.
         allow_pv_to_community (bool, optional): Wether to allow selling PV energy to community. Defaults to False.
         allow_storage_to_wholesale (bool, optional): Wether to allow selling from storage to wholesale market. Defaults to False.
+        return_charge_timeseries (bool, optional): If True, returns dict with charge timeseries data. If False, returns only results_df. Defaults to False.
         check_timeseries (bool, optional): Wether to check time series. Defaults to True.
         solver (str, optional): Which solver to use. Defaults to "gurobi".
 
     Returns:
-        pd.DataFrame: DataFrame containing storage parameters and their worth (value).
+        pd.DataFrame or dict: If return_charge_timeseries is False (default), returns DataFrame with storage parameters and worth. If True, returns dict with keys 'results_df', 'baseline_charge_timeseries', 'storages_charge_timeseries'.
     """
+
+    if return_charge_timeseries and len(
+        [stor.id for stor in storages_to_calculate]
+    ) != len(set([stor.id for stor in storages_to_calculate])):
+        msg = "Multiple storages with same ID are not allowed when returning charge timeseries data as "
+        msg += "IDs are used to index storages_to_calc_charge_timeseries dictionary"
+        raise ValueError(msg)
 
     # calculate baseline costs
     baseline_ecc = ECC(
@@ -141,6 +163,7 @@ def calculate_multiple_storage_worth(
         **kwargs,
     )
     baseline_costs = baseline_ecc.optimize(solver=solver)
+    baseline_charge = baseline_ecc.get_storage_charge_timeseries_df()
 
     df = pd.DataFrame(
         columns=[
@@ -174,6 +197,7 @@ def calculate_multiple_storage_worth(
         0,
     ]
 
+    storages_charge = {}
     for storage in storages_to_calculate:
         ecc = ECC(
             storage=storage,
@@ -199,8 +223,16 @@ def calculate_multiple_storage_worth(
         stor_df["worth"] = [storage_worth]
 
         df = pd.concat([df, stor_df], ignore_index=True)
+        storages_charge[storage.id] = ecc.get_storage_charge_timeseries_df()
 
-    return df
+    if return_charge_timeseries:
+        return {
+            "results_df": df,
+            "baseline_charge_ts": baseline_charge,
+            "storages_to_calc_charge_ts": storages_charge,
+        }
+    else:
+        return df
 
 
 def calculate_bidding_curve(
