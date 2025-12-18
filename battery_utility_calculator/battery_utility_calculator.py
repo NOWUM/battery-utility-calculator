@@ -163,7 +163,9 @@ def calculate_multiple_storage_worth(
         **kwargs,
     )
     baseline_costs = baseline_ecc.optimize(solver=solver)
-    baseline_charge = baseline_ecc.get_storage_charge_timeseries_df()
+
+    if return_charge_timeseries:
+        baseline_charge = baseline_ecc.get_storage_charge_timeseries_df()
 
     df = pd.DataFrame(
         columns=[
@@ -223,7 +225,9 @@ def calculate_multiple_storage_worth(
         stor_df["worth"] = [storage_worth]
 
         df = pd.concat([df, stor_df], ignore_index=True)
-        storages_charge[storage.id] = ecc.get_storage_charge_timeseries_df()
+
+        if return_charge_timeseries:
+            storages_charge[storage.id] = ecc.get_storage_charge_timeseries_df()
 
     if return_charge_timeseries:
         return {
