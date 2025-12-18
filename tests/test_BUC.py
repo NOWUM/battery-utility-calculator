@@ -11,6 +11,8 @@ from battery_utility_calculator.battery_utility_calculator import (
     calculate_storage_worth,
 )
 
+idx = pd.date_range("2025-01-01", freq="h", periods=3)
+
 
 def test_calculate_storage_worth():
     baseline_storage = Storage(0, 1, 0, 1)
@@ -19,12 +21,12 @@ def test_calculate_storage_worth():
     worth = calculate_storage_worth(
         baseline_storage=baseline_storage,
         storage_to_calculate=storage_to_calc,
-        eeg_prices=pd.Series([0, 0, 0]),
-        wholesale_market_prices=pd.Series([0, 0, 0]),
-        community_market_prices=pd.Series([0, 0, 0]),
-        grid_prices=pd.Series([0, 1, 1]),
-        solar_generation=pd.Series([0, 0, 0]),
-        demand=pd.Series([1, 1, 1]),
+        eeg_prices=pd.Series([0, 0, 0], index=idx),
+        wholesale_market_prices=pd.Series([0, 0, 0], index=idx),
+        community_market_prices=pd.Series([0, 0, 0], index=idx),
+        grid_prices=pd.Series([0, 1, 1], index=idx),
+        solar_generation=pd.Series([0, 0, 0], index=idx),
+        demand=pd.Series([1, 1, 1], index=idx),
         solver="appsi_highs",
     )
 
@@ -40,12 +42,12 @@ def test_calculate_multiple_storage_worth():
     worths = calculate_multiple_storage_worth(
         baseline_storage=baseline_storage,
         storages_to_calculate=storages_to_calc,
-        eeg_prices=pd.Series([0, 0, 0]),
-        wholesale_market_prices=pd.Series([0, 0, 0]),
-        community_market_prices=pd.Series([0, 0, 0]),
-        grid_prices=pd.Series([0, 1, 1]),
-        solar_generation=pd.Series([0, 0, 0]),
-        demand=pd.Series([1, 1, 1]),
+        eeg_prices=pd.Series([0, 0, 0], index=idx),
+        wholesale_market_prices=pd.Series([0, 0, 0], index=idx),
+        community_market_prices=pd.Series([0, 0, 0], index=idx),
+        grid_prices=pd.Series([0, 1, 1], index=idx),
+        solar_generation=pd.Series([0, 0, 0], index=idx),
+        demand=pd.Series([1, 1, 1], index=idx),
         solver="appsi_highs",
     )
 

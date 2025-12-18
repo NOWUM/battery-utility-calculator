@@ -40,12 +40,12 @@ class EnergyCostCalculator:
 
         Args:
             storage (Storage) | None: The available storage. None if no storage is available.
-            demand (pd.Series): The demand data for the optimization. Values should be in kW.
-            solar_generation (pd.Series): The solar generation data for the optimization. Values should be in kW.
-            grid_prices (pd.Series): The grid prices for the optimization. Values should be in EUR per kWh.
-            eeg_prices (pd.Series): The EEG prices for the optimization. Values should be in EUR per kWh.
-            community_market_prices (pd.Series): The community market prices for the optimization. Values should be in EUR per kWh.
-            wholesale_market_prices (pd.Series): The wholesale market prices for the optimization. Values should be in EUR per kWh.
+            demand (pd.Series): The demand timeseries for the optimization. Values should be in kW. Index has to be pd.DateTimeIndex.
+            solar_generation (pd.Series): The solar generation data for the optimization. Values should be in kW. Index has to be pd.DateTimeIndex.
+            grid_prices (pd.Series): The grid prices for the optimization. Values should be in EUR per kWh. Index has to be pd.DateTimeIndex.
+            eeg_prices (pd.Series): The EEG prices for the optimization. Values should be in EUR per kWh. Index has to be pd.DateTimeIndex.
+            community_market_prices (pd.Series): The community market prices for the optimization. Values should be in EUR per kWh. Index has to be pd.DateTimeIndex.
+            wholesale_market_prices (pd.Series): The wholesale market prices for the optimization. Values should be in EUR per kWh. Index has to be pd.DateTimeIndex.
             hours_per_timestep (int | float): Hours per timesteps, e. g. 0.25 equals quarter hour.
             storage_use_cases (list[str]): The use cases for energy storage. Allowed values are "eeg", "wholesale", "community", "home"
         """
@@ -57,6 +57,8 @@ class EnergyCostCalculator:
                 id=0, c_rate=1, volume=0, charge_efficiency=1, discharge_efficiency=1
             )
 
+        self.solar_generation = solar_generation
+        self.demand = demand
         self.grid_prices = grid_prices.copy()
         self.eeg_prices = eeg_prices.copy()
         self.community_market_prices = community_market_prices.copy()
@@ -78,22 +80,8 @@ class EnergyCostCalculator:
         self.allow_storage_to_community = allow_storage_to_community
         self.allow_community_to_storage = allow_community_to_storage
 
-        self.timesteps = list(range(len(self.demand.index)))
-
-        # save timestamps from orignal index
-        self.start = self.demand.index[0]
-        self.end = self.demand.index[-1]
-        if isinstance(self.demand.index, pd.DatetimeIndex):
-            self.timestamps = pd.date_range(
-                start=self.start, end=self.end, periods=len(self.demand)
-            )
-        else:
-            self.timestamps = self.timesteps
-
-        self.__check_timeseries_indices__()
-
-        self.solar_generation = solar_generation
-        self.demand = demand
+        self.__check_prepare_timeseries_indices__()
+        self.timesteps = list(range(len(self.demand)))
 
         self.is_optimized = False
 
@@ -102,7 +90,7 @@ class EnergyCostCalculator:
         self.set_model_constraints()
         self.set_model_objective()
 
-    def __check_timeseries_indices__(self) -> None:
+    def __check_prepare_timeseries_indices__(self) -> None:
         """Check if all timeseries indices are valid."""
         attrs = [
             "solar_generation",
@@ -112,26 +100,30 @@ class EnergyCostCalculator:
             "wholesale_market_prices",
         ]
 
-        # reference
-        self.timestamps = self.demand.index.copy()  # save original index for later
-        if isinstance(self.demand.index, pd.DatetimeIndex):
-            self.demand.index = self.timesteps  # set to integer values
-            log.debug("DatetimeIndex for demand not allowed, set to integer")
+        if not isinstance(self.demand.index, pd.DatetimeIndex):
+            msg = "Index of demand timeseries has to be pd.DateTimeIndex!"
+            raise TypeError(msg)
+        else:
+            ref_index = self.demand.index.copy()
 
-        # ensure all indices match the reference and if DatetimeIndex
-        # are provided convert the actual instance attributes to integer indices
-        # while keeping the original timestamps in self.timestamps.
+        self.original_index = ref_index
+        new_index = pd.RangeIndex(len(ref_index))
+
+        # ensure all indices match the reference
         for name in attrs:
-            series = getattr(self, name)
-            # compare against saved timestamps (which may be integer list)
-            if not series.index.equals(self.timestamps):
-                raise ValueError(f"{name}: all timeseries indices must be identical.")
+            series = getattr(self, name).copy()
 
-            if isinstance(series.index, pd.DatetimeIndex):
-                # convert the actual stored Series index to integer timesteps
-                series.index = self.timesteps
-                setattr(self, name, series)
-                log.debug(f"DatetimeIndex for {name} not allowed, set to integer")
+            if not isinstance(series.index, pd.DatetimeIndex):
+                msg = f"Index of {name} has to be pd.DateTimeIndex!"
+                raise TypeError(msg)
+
+            if not series.index.equals(ref_index):
+                raise ValueError(
+                    f"All timeseries indices must be identical. Index of {name} does not equal index of demand."
+                )
+
+            series.index = new_index
+            setattr(self, name, series)
 
     def set_model_variables(self):
         log.info("Setting up model variables...")
@@ -630,7 +622,7 @@ class EnergyCostCalculator:
 
         energy_flows["demand"] = self.demand.copy()
 
-        energy_flows["index"] = self.timestamps.copy()
+        energy_flows["index"] = self.original_index.copy()
         energy_flows.set_index("index", inplace=True)
         energy_flows.index.name = None
 
@@ -653,7 +645,7 @@ class EnergyCostCalculator:
             self.model.community_to_home[timestep].value for timestep in self.timesteps
         ]
 
-        demand_coverage["index"] = self.timestamps.copy()
+        demand_coverage["index"] = self.original_index.copy()
         demand_coverage.set_index("index", inplace=True)
         demand_coverage.index.name = None
 
@@ -685,7 +677,7 @@ class EnergyCostCalculator:
             self.model.pv_to_storage[t, "community"].value for t in self.timesteps
         ]
 
-        pv_usage["index"] = self.timestamps.copy()
+        pv_usage["index"] = self.original_index.copy()
         pv_usage.set_index("index", inplace=True)
         pv_usage.index.name = None
 
@@ -699,7 +691,7 @@ class EnergyCostCalculator:
                 self.model.storage_level[t, use_case].value for t in self.timesteps
             ]
 
-        storage_usage["index"] = self.timestamps.copy()
+        storage_usage["index"] = self.original_index.copy()
         storage_usage.set_index("index", inplace=True)
         storage_usage.index.name = None
 
