@@ -108,18 +108,18 @@ def test_ECC_selling_pv_w_storage():
 
 
 def test_ECC_negative_prices():
-    # buy as much in ts=2 cause we get paid for this
+    # buy 2 kWh in ts=1 because we get paid for this
     calculator = EnergyCostCalculator(
         storage=Storage(id=0, c_rate=1, volume=2),
         eeg_prices=pd.Series([0, 0, 0], index=idx_3),
         wholesale_market_prices=pd.Series([0, 0, 0], index=idx_3),
         community_market_prices=pd.Series([0, 0, 0], index=idx_3),
-        grid_prices=pd.Series([5, 10, -20], index=idx_3),
+        grid_prices=pd.Series([5, -20, 5], index=idx_3),
         solar_generation=pd.Series([0, 0, 0], index=idx_3),
         demand=pd.Series([0, 0, 2], index=idx_3),
     )
     costs = calculator.optimize(solver="highs")
-    assert costs == 80
+    assert costs == 40
 
 
 def test_ECC_c_rate():
@@ -231,3 +231,33 @@ def test_ECC_hours_per_timestep():
     )
     costs = calculator.optimize(solver="highs")
     assert costs == -1
+
+
+def test_ECC_soc_start():
+    calculator = EnergyCostCalculator(
+        storage=Storage(id=0, c_rate=0.5, volume=1),
+        eeg_prices=pd.Series([0, 0, 0], index=idx_3),
+        wholesale_market_prices=pd.Series([0, 0, 0], index=idx_3),
+        community_market_prices=pd.Series([0, 0, 0], index=idx_3),
+        grid_prices=pd.Series([0, 1, 1], index=idx_3),
+        solar_generation=pd.Series([0, 0, 0], index=idx_3),
+        demand=pd.Series([1, 1, 1], index=idx_3),
+    )
+    costs = calculator.optimize(solver="highs")
+    soc_df = calculator.get_storage_soc_timeseries_df()
+    assert soc_df.loc["2025-01-01 00:00:00", "soc_home"] == 0.5
+
+
+def test_ECC_soc_end():
+    calculator = EnergyCostCalculator(
+        storage=Storage(id=0, c_rate=0.5, volume=1),
+        eeg_prices=pd.Series([0, 0, 0], index=idx_3),
+        wholesale_market_prices=pd.Series([0, 0, 0], index=idx_3),
+        community_market_prices=pd.Series([0, 0, 0], index=idx_3),
+        grid_prices=pd.Series([0, 1, 1], index=idx_3),
+        solar_generation=pd.Series([0, 0, 0], index=idx_3),
+        demand=pd.Series([1, 1, 0], index=idx_3),
+    )
+    costs = calculator.optimize(solver="highs")
+    soc_df = calculator.get_storage_soc_timeseries_df()
+    assert soc_df.loc["2025-01-01 02:00:00", "soc_home"] == 0

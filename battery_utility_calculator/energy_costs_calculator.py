@@ -341,6 +341,31 @@ class EnergyCostCalculator:
             self.timesteps, rule=restrict_soc_min
         )
 
+        # storage level must be 0 at beginning
+        def restrict_soc_start(model):
+            return (
+                sum(model.storage_level[0, use] for use in self.storage_use_cases)
+                <= self.storage.volume
+                * self.storage.c_rate
+                * self.storage.charge_efficiency
+            )
+
+        self.model.storage_start_level_restriction = pyo.Constraint(
+            rule=restrict_soc_start
+        )
+
+        # storage level must be 0 at end
+        def restrict_soc_end(model):
+            return (
+                sum(
+                    model.storage_level[self.timesteps[-1], use]
+                    for use in self.storage_use_cases
+                )
+                == 0
+            )
+
+        self.model.storage_end_level_restriction = pyo.Constraint(rule=restrict_soc_end)
+
         if "eeg" in self.storage_use_cases:
 
             def restrict_soc_eeg(model, timestep):
