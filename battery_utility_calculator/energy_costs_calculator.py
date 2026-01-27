@@ -35,6 +35,7 @@ class EnergyCostCalculator:
         allow_wholesale_to_storage: bool = True,
         allow_pv_to_wholesale: bool = True,
         allow_storage_to_wholesale: bool = True,
+        wholesale_fee: float = 0.3,
     ):
         """Optimizer for prosumer energy management, calculating minimum costs to cover energy demand.
 
@@ -48,6 +49,7 @@ class EnergyCostCalculator:
             wholesale_market_prices (pd.Series): The wholesale market prices for the optimization. Values should be in EUR per kWh. Index has to be pd.DateTimeIndex.
             hours_per_timestep (int | float): Hours per timesteps, e. g. 0.25 equals quarter hour.
             storage_use_cases (list[str]): The use cases for energy storage. Allowed values are "eeg", "wholesale", "community", "home"
+            wholesale_fee (float): Percentage of earned wholesale money that has to be given away (0.0 to 1.0). Default is 0.3.
         """
 
         if storage:
@@ -79,6 +81,7 @@ class EnergyCostCalculator:
         self.allow_community_to_home = allow_community_to_home
         self.allow_storage_to_community = allow_storage_to_community
         self.allow_community_to_storage = allow_community_to_storage
+        self.wholesale_fee = wholesale_fee
 
         self.__check_prepare_timeseries_indices__()
         self.timesteps = list(range(len(self.demand)))
@@ -554,22 +557,19 @@ class EnergyCostCalculator:
         )
 
         # wholesale cashflow
-        wholesale_cf = (
-            # selling from storage to wholesale
-            sum(
-                self.model.storage_to_wholesale[timestep]
-                * self.wholesale_market_prices.loc[timestep]
-                * self.hours_per_timestep
-                for timestep in self.timesteps
-            )
-            # buying from wholesale to storage
-            - sum(
-                self.model.wholesale_to_storage[timestep]
-                * self.wholesale_market_prices.loc[timestep]
-                * self.hours_per_timestep
-                for timestep in self.timesteps
-            )
+        wholesale_earnings = sum(
+            self.model.storage_to_wholesale[timestep]
+            * self.wholesale_market_prices.loc[timestep]
+            * self.hours_per_timestep
+            for timestep in self.timesteps
         )
+        wholesale_costs = sum(
+            self.model.wholesale_to_storage[timestep]
+            * self.wholesale_market_prices.loc[timestep]
+            * self.hours_per_timestep
+            for timestep in self.timesteps
+        )
+        wholesale_cf = (1 - self.wholesale_fee) * wholesale_earnings - wholesale_costs
 
         # maximize sum of cashflows
         self.model.objective = pyo.Objective(
