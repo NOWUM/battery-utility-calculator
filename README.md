@@ -24,7 +24,7 @@ pytest
 This package exposes small helper functions for common workflows plus the underlying optimizer class.
 
 - `Storage(id, c_rate, volume, efficiency)` — small value object describing a storage unit.
-- `calculate_storage_worth(baseline_storage, storage_to_calculate, demand, solar_generation, grid_prices, eeg_prices, community_market_prices, wholesale_market_prices, ...)` — returns the value (difference in optimized costs) of adding `storage_to_calculate` compared to `baseline_storage`.
+- `calculate_storage_worth(baseline_storage, storage_to_calculate, demand, solar_generation, supplier_prices, eeg_prices, community_market_prices, wholesale_market_prices, ...)` — returns the value (difference in optimized costs) of adding `storage_to_calculate` compared to `baseline_storage`.
 - `calculate_multiple_storage_worth(...)` — same as above but returns a DataFrame with costs and worth for multiple storage sizes.
 - `calculate_bidding_curve(volumes_worth, buy_or_sell_side)` — converts cumulative worths into a marginal bidding curve.
 
@@ -48,7 +48,7 @@ worth = calculate_storage_worth(
     eeg_prices=pd.Series([0, 0, 0]),
     wholesale_market_prices=pd.Series([0, 0, 0]),
     community_market_prices=pd.Series([0, 0, 0]),
-    grid_prices=pd.Series([0, 1, 1]),
+    supplier_prices=pd.Series([0, 1, 1]),
     solar_generation=pd.Series([0, 0, 0]),
     demand=pd.Series([1, 1, 1]),
     solver="appsi_highs",
@@ -62,7 +62,7 @@ df = calculate_multiple_storage_worth(
     eeg_prices=pd.Series([0, 0, 0]),
     wholesale_market_prices=pd.Series([0, 0, 0]),
     community_market_prices=pd.Series([0, 0, 0]),
-    grid_prices=pd.Series([0, 1, 1]),
+    supplier_prices=pd.Series([0, 1, 1]),
     solar_generation=pd.Series([0, 0, 0]),
     demand=pd.Series([1, 1, 1]),
     solver="appsi_highs",

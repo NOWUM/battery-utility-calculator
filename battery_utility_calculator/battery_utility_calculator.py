@@ -15,7 +15,7 @@ def calculate_storage_worth(
     storage_to_calculate: Storage,
     demand: pd.Series,
     solar_generation: pd.Series,
-    grid_prices: pd.Series,
+    supplier_prices: pd.Series,
     eeg_prices: pd.Series,
     community_market_prices: pd.Series,
     wholesale_market_prices: pd.Series,
@@ -35,7 +35,7 @@ def calculate_storage_worth(
         storage_to_calculate (Storage): The storage to calculate the worth (value) for.
         demand (pd.Series): Demand timeseries. Values should be in kWh per hour (kW).
         solar_generation (pd.Series): Solar generation timeseries. Values should be in kWh per hour (kW).
-        grid_prices (pd.Series): Grid prices timeseries. Values should be in EUR per kWh.
+        supplier_prices (pd.Series): Grid prices timeseries. Values should be in EUR per kWh.
         eeg_prices (pd.Series): EEG prices timeseries. Values should be in EUR per kWh.
         community_market_prices (pd.Series): Community market timeseries. Values should be in EUR per kWh.
         wholesale_market_prices (pd.Series): Wholesale market timeseries. Values should be in EUR per kWh.
@@ -57,7 +57,7 @@ def calculate_storage_worth(
         storage=baseline_storage,
         demand=demand,
         solar_generation=solar_generation,
-        grid_prices=grid_prices,
+        supplier_prices=supplier_prices,
         eeg_prices=eeg_prices,
         community_market_prices=community_market_prices,
         wholesale_market_prices=wholesale_market_prices,
@@ -75,7 +75,7 @@ def calculate_storage_worth(
         storage=storage_to_calculate,
         demand=demand,
         solar_generation=solar_generation,
-        grid_prices=grid_prices,
+        supplier_prices=supplier_prices,
         eeg_prices=eeg_prices,
         community_market_prices=community_market_prices,
         wholesale_market_prices=wholesale_market_prices,
@@ -110,7 +110,7 @@ def calculate_multiple_storage_worth(
     storages_to_calculate: list[Storage],
     demand: pd.Series,
     solar_generation: pd.Series,
-    grid_prices: pd.Series,
+    supplier_prices: pd.Series,
     eeg_prices: pd.Series,
     community_market_prices: pd.Series,
     wholesale_market_prices: pd.Series,
@@ -126,7 +126,7 @@ def calculate_multiple_storage_worth(
         storages_to_calculate (list[Storage]): List of storages to calculate worth (value) for.
         demand (pd.Series): Demand timeseries. Values should be in kWh per hour (kW).
         solar_generation (pd.Series): Solar generation timeseries. Values should be in kWh per hour (kW).
-        grid_prices (pd.Series): Grid prices timeseries. Values should be in EUR per kWh.
+        supplier_prices (pd.Series): Grid prices timeseries. Values should be in EUR per kWh.
         eeg_prices (pd.Series): EEG prices timeseries. Values should be in EUR per kWh.
         community_market_prices (pd.Series): Community market timeseries. Values should be in EUR per kWh.
         wholesale_market_prices (pd.Series): Wholesale market timeseries. Values should be in EUR per kWh.
@@ -155,7 +155,7 @@ def calculate_multiple_storage_worth(
         storage=baseline_storage,
         demand=demand,
         solar_generation=solar_generation,
-        grid_prices=grid_prices,
+        supplier_prices=supplier_prices,
         eeg_prices=eeg_prices,
         community_market_prices=community_market_prices,
         wholesale_market_prices=wholesale_market_prices,
@@ -205,7 +205,7 @@ def calculate_multiple_storage_worth(
             storage=storage,
             demand=demand,
             solar_generation=solar_generation,
-            grid_prices=grid_prices,
+            supplier_prices=supplier_prices,
             eeg_prices=eeg_prices,
             community_market_prices=community_market_prices,
             wholesale_market_prices=wholesale_market_prices,

@@ -21,7 +21,7 @@ class EnergyCostCalculator:
         storage: Storage | None,
         demand: pd.Series,
         solar_generation: pd.Series,
-        grid_prices: pd.Series,
+        supplier_prices: pd.Series,
         eeg_prices: pd.Series,
         community_market_prices: pd.Series,
         wholesale_market_prices: pd.Series,
@@ -43,7 +43,7 @@ class EnergyCostCalculator:
             storage (Storage) | None: The available storage. None if no storage is available.
             demand (pd.Series): The demand timeseries for the optimization. Values should be in kW. Index has to be pd.DateTimeIndex.
             solar_generation (pd.Series): The solar generation data for the optimization. Values should be in kW. Index has to be pd.DateTimeIndex.
-            grid_prices (pd.Series): The grid prices for the optimization. Values should be in EUR per kWh. Index has to be pd.DateTimeIndex.
+            supplier_prices (pd.Series): The grid prices for the optimization. Values should be in EUR per kWh. Index has to be pd.DateTimeIndex.
             eeg_prices (pd.Series): The EEG prices for the optimization. Values should be in EUR per kWh. Index has to be pd.DateTimeIndex.
             community_market_prices (pd.Series): The community market prices for the optimization. Values should be in EUR per kWh. Index has to be pd.DateTimeIndex.
             wholesale_market_prices (pd.Series): The wholesale market prices for the optimization. Values should be in EUR per kWh. Index has to be pd.DateTimeIndex.
@@ -61,7 +61,7 @@ class EnergyCostCalculator:
 
         self.solar_generation = solar_generation
         self.demand = demand
-        self.grid_prices = grid_prices.copy()
+        self.supplier_prices = supplier_prices.copy()
         self.eeg_prices = eeg_prices.copy()
         self.community_market_prices = community_market_prices.copy()
         self.wholesale_market_prices = wholesale_market_prices.copy()
@@ -97,7 +97,7 @@ class EnergyCostCalculator:
         """Check if all timeseries indices are valid."""
         attrs = [
             "solar_generation",
-            "grid_prices",
+            "supplier_prices",
             "eeg_prices",
             "community_market_prices",
             "wholesale_market_prices",
@@ -525,14 +525,14 @@ class EnergyCostCalculator:
             # buying energy from supplier to storage
             -sum(
                 self.model.supplier_to_storage[timestep]
-                * self.grid_prices.loc[timestep]
+                * self.supplier_prices.loc[timestep]
                 * self.hours_per_timestep
                 for timestep in self.timesteps
             )
             # buying energy from supplier to home
             - sum(
                 self.model.supplier_to_home[timestep]
-                * self.grid_prices.loc[timestep]
+                * self.supplier_prices.loc[timestep]
                 * self.hours_per_timestep
                 for timestep in self.timesteps
             )
@@ -919,7 +919,7 @@ class EnergyCostCalculator:
         """Plot prices using plotly.express."""
         price_df = pd.DataFrame(
             {
-                "grid_prices": self.grid_prices,
+                "supplier_prices": self.supplier_prices,
                 "eeg_prices": self.eeg_prices,
                 "community_market_prices": self.community_market_prices,
                 "wholesale_market_prices": self.wholesale_market_prices,
@@ -929,7 +929,7 @@ class EnergyCostCalculator:
         df = price_df.reset_index().rename(
             columns={
                 price_df.index.name or "index": "t",
-                "grid_prices": "Grid prices",
+                "supplier_prices": "Grid prices",
                 "eeg_prices": "EEG prices",
                 "community_market_prices": "Community market prices",
                 "wholesale_market_prices": "Wholesale market prices",

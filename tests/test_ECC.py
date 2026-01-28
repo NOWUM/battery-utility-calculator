@@ -21,7 +21,7 @@ def test_ECC_baseline():
         eeg_prices=pd.Series([0, 0, 0], index=idx_3),
         wholesale_market_prices=pd.Series([0, 0, 0], index=idx_3),
         community_market_prices=pd.Series([0, 0, 0], index=idx_3),
-        grid_prices=pd.Series([1, 1, 1], index=idx_3),
+        supplier_prices=pd.Series([1, 1, 1], index=idx_3),
         solar_generation=pd.Series([0, 0, 0], index=idx_3),
         demand=pd.Series([1, 1, 1], index=idx_3),
     )
@@ -36,7 +36,7 @@ def test_ECC_opti_storage():
         eeg_prices=pd.Series([0, 0, 0], index=idx_3),
         wholesale_market_prices=pd.Series([0, 0, 0], index=idx_3),
         community_market_prices=pd.Series([0, 0, 0], index=idx_3),
-        grid_prices=pd.Series([0, 1, 1], index=idx_3),
+        supplier_prices=pd.Series([0, 1, 1], index=idx_3),
         solar_generation=pd.Series([0, 0, 0], index=idx_3),
         demand=pd.Series([1, 1, 1], index=idx_3),
     )
@@ -54,7 +54,7 @@ def test_ECC_opti_storage_2():
         eeg_prices=pd.Series([0, 0, 0], index=idx_3),
         wholesale_market_prices=pd.Series([0, 0, 0], index=idx_3),
         community_market_prices=pd.Series([0, 0, 0], index=idx_3),
-        grid_prices=pd.Series([0, 1, 1], index=idx_3),
+        supplier_prices=pd.Series([0, 1, 1], index=idx_3),
         solar_generation=pd.Series([0, 0, 0], index=idx_3),
         demand=pd.Series([2, 2, 2], index=idx_3),
     )
@@ -69,7 +69,7 @@ def test_ECC_selling_pv():
         eeg_prices=pd.Series([1, 0, 0], index=idx_3),
         wholesale_market_prices=pd.Series([0, 0, 0], index=idx_3),
         community_market_prices=pd.Series([0, 0, 0], index=idx_3),
-        grid_prices=pd.Series([1, 1, 1], index=idx_3),
+        supplier_prices=pd.Series([1, 1, 1], index=idx_3),
         solar_generation=pd.Series([1, 0, 0], index=idx_3),
         demand=pd.Series([0, 0, 0], index=idx_3),
     )
@@ -86,7 +86,7 @@ def test_ECC_selling_pv_w_storage():
         eeg_prices=pd.Series([1, 2, 0], index=idx_3),
         wholesale_market_prices=pd.Series([0, 0, 0], index=idx_3),
         community_market_prices=pd.Series([0, 0, 0], index=idx_3),
-        grid_prices=pd.Series([1, 1, 1], index=idx_3),
+        supplier_prices=pd.Series([1, 1, 1], index=idx_3),
         solar_generation=pd.Series([1, 0, 0], index=idx_3),
         demand=pd.Series([0, 0, 0], index=idx_3),
     )
@@ -99,7 +99,7 @@ def test_ECC_selling_pv_w_storage():
         eeg_prices=pd.Series([0, 0, 0], index=idx_3),
         wholesale_market_prices=pd.Series([0, 0, 0], index=idx_3),
         community_market_prices=pd.Series([0, 0, 0], index=idx_3),
-        grid_prices=pd.Series([5, 10, 20], index=idx_3),
+        supplier_prices=pd.Series([5, 10, 20], index=idx_3),
         solar_generation=pd.Series([1, 1, 0], index=idx_3),
         demand=pd.Series([0, 0, 2], index=idx_3),
     )
@@ -114,7 +114,7 @@ def test_ECC_negative_prices():
         eeg_prices=pd.Series([0, 0, 0], index=idx_3),
         wholesale_market_prices=pd.Series([0, 0, 0], index=idx_3),
         community_market_prices=pd.Series([0, 0, 0], index=idx_3),
-        grid_prices=pd.Series([5, -20, 5], index=idx_3),
+        supplier_prices=pd.Series([5, -20, 5], index=idx_3),
         solar_generation=pd.Series([0, 0, 0], index=idx_3),
         demand=pd.Series([0, 0, 2], index=idx_3),
     )
@@ -129,7 +129,7 @@ def test_ECC_c_rate():
         eeg_prices=pd.Series([0, 0, 0], index=idx_3),
         wholesale_market_prices=pd.Series([0, 0, 0], index=idx_3),
         community_market_prices=pd.Series([0, 0, 0], index=idx_3),
-        grid_prices=pd.Series([0, 10, 0], index=idx_3),
+        supplier_prices=pd.Series([0, 10, 0], index=idx_3),
         solar_generation=pd.Series([0, 0, 0], index=idx_3),
         demand=pd.Series([2, 2, 0], index=idx_3),
     )
@@ -141,30 +141,34 @@ def test_ECC_wholesale():
     storage = Storage(id=0, c_rate=1, volume=1)
 
     storage = Storage(id=0, c_rate=1, volume=1)
-    # no demand, just buying from wholesale when price is 3 and selling again when price is 5
+    # no demand, just buying from wholesale when price is 0 and selling again when price is 5
     # should be able to just do this once, as we only have volume of 1
+    # buy for 0, sell for 5 -> gain of 5€, but 50% fee -> 2.5€
     ecc = EnergyCostCalculator(
         storage=storage,
         demand=pd.Series([0, 0, 0, 0], index=idx_4),
         solar_generation=pd.Series([0, 0, 0, 0], index=idx_4),
-        grid_prices=pd.Series([10, 10, 10, 10], index=idx_4),
+        supplier_prices=pd.Series([10, 10, 10, 10], index=idx_4),
         eeg_prices=pd.Series([0, 0, 0, 0], index=idx_4),
         community_market_prices=pd.Series([0, 0, 0, 0], index=idx_4),
-        wholesale_market_prices=pd.Series([3, 3, 5, 5], index=idx_4),
+        wholesale_market_prices=pd.Series([0, 0, 5, 5], index=idx_4),
+        wholesale_fee=0.5,
     )
     costs = ecc.optimize(solver="highs")
-    assert costs == 2
+    assert costs == 2.5
 
     # same as above, but volume of 2, so should be able to do two times for total gain of 4
+    # no fee, so 100% of profit goes to customer
     storage = Storage(id=0, c_rate=1, volume=2)
     ecc = EnergyCostCalculator(
         storage=storage,
         demand=pd.Series([0, 0, 0, 0], index=idx_4),
         solar_generation=pd.Series([0, 0, 0, 0], index=idx_4),
-        grid_prices=pd.Series([10, 10, 10, 10], index=idx_4),
+        supplier_prices=pd.Series([10, 10, 10, 10], index=idx_4),
         eeg_prices=pd.Series([0, 0, 0, 0], index=idx_4),
         community_market_prices=pd.Series([0, 0, 0, 0], index=idx_4),
         wholesale_market_prices=pd.Series([3, 3, 5, 5], index=idx_4),
+        wholesale_fee=0,
     )
     costs = ecc.optimize(solver="highs")
     assert costs == 4
@@ -179,7 +183,7 @@ def test_ECC_charge_discharge_eff():
         eeg_prices=pd.Series([0, 0, 0], index=idx_3),
         wholesale_market_prices=pd.Series([0, 0, 0], index=idx_3),
         community_market_prices=pd.Series([0, 0, 0], index=idx_3),
-        grid_prices=pd.Series([0, 1, 1], index=idx_3),
+        supplier_prices=pd.Series([0, 1, 1], index=idx_3),
         solar_generation=pd.Series([0, 0, 0], index=idx_3),
         demand=pd.Series([1, 1, 1], index=idx_3),
     )
@@ -194,7 +198,7 @@ def test_ECC_charge_discharge_eff():
         eeg_prices=pd.Series([0, 0, 0], index=idx_3),
         wholesale_market_prices=pd.Series([0, 0, 0], index=idx_3),
         community_market_prices=pd.Series([0, 0, 0], index=idx_3),
-        grid_prices=pd.Series([0, 1, 1], index=idx_3),
+        supplier_prices=pd.Series([0, 1, 1], index=idx_3),
         solar_generation=pd.Series([0, 0, 0], index=idx_3),
         demand=pd.Series([1, 1, 1], index=idx_3),
     )
@@ -209,7 +213,7 @@ def test_ECC_charge_discharge_eff():
         eeg_prices=pd.Series([0, 0, 0], index=idx_3),
         wholesale_market_prices=pd.Series([0, 0, 0], index=idx_3),
         community_market_prices=pd.Series([0, 0, 0], index=idx_3),
-        grid_prices=pd.Series([0, 1, 1], index=idx_3),
+        supplier_prices=pd.Series([0, 1, 1], index=idx_3),
         solar_generation=pd.Series([0, 0, 0], index=idx_3),
         demand=pd.Series([1, 1, 1], index=idx_3),
     )
@@ -224,7 +228,7 @@ def test_ECC_hours_per_timestep():
         eeg_prices=pd.Series([0, 0, 0, 0], index=idx_4),
         wholesale_market_prices=pd.Series([0, 0, 0, 0], index=idx_4),
         community_market_prices=pd.Series([0, 0, 0, 0], index=idx_4),
-        grid_prices=pd.Series([1, 1, 1, 1], index=idx_4),
+        supplier_prices=pd.Series([1, 1, 1, 1], index=idx_4),
         solar_generation=pd.Series([0, 0, 0, 0], index=idx_4),
         demand=pd.Series([1, 1, 1, 1], index=idx_4),
         hours_per_timestep=0.25,
@@ -239,7 +243,7 @@ def test_ECC_soc_start():
         eeg_prices=pd.Series([0, 0, 0], index=idx_3),
         wholesale_market_prices=pd.Series([0, 0, 0], index=idx_3),
         community_market_prices=pd.Series([0, 0, 0], index=idx_3),
-        grid_prices=pd.Series([0, 1, 1], index=idx_3),
+        supplier_prices=pd.Series([0, 1, 1], index=idx_3),
         solar_generation=pd.Series([0, 0, 0], index=idx_3),
         demand=pd.Series([1, 1, 1], index=idx_3),
     )
@@ -254,7 +258,7 @@ def test_ECC_soc_end():
         eeg_prices=pd.Series([0, 0, 0], index=idx_3),
         wholesale_market_prices=pd.Series([0, 0, 0], index=idx_3),
         community_market_prices=pd.Series([0, 0, 0], index=idx_3),
-        grid_prices=pd.Series([0, 1, 1], index=idx_3),
+        supplier_prices=pd.Series([0, 1, 1], index=idx_3),
         solar_generation=pd.Series([0, 0, 0], index=idx_3),
         demand=pd.Series([1, 1, 0], index=idx_3),
     )
