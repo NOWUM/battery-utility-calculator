@@ -264,7 +264,7 @@ def calculate_bidding_curve(
     if buy_or_sell_side == "buyer":
         df = volumes_worth.sort_values("volume", ascending=True)
     elif buy_or_sell_side == "seller":
-        df = volumes_worth.sort_values("volume", ascending=True)
+        df = volumes_worth.sort_values("volume", ascending=False)
     else:
         raise ValueError("buy_or_sell_side has to be either 'buyer' or 'seller'")
 
