@@ -776,7 +776,7 @@ class EnergyCostCalculator:
             value_name="kWh",
         )
         fig = px.line(
-            long, x=df.columns[0], y="kWh", color="Flow", title="Energy flows"
+            long, x=self.original_index, y="kWh", color="Flow", title="Energy flows"
         )
 
         if show:
@@ -813,7 +813,11 @@ class EnergyCostCalculator:
             value_name="kWh",
         )
         fig = px.area(
-            long, x=df.columns[0], y="kWh", color="source", title="Demand coverage"
+            long,
+            x=self.original_index,
+            y="kWh",
+            color="source",
+            title="Demand coverage",
         )
 
         if "demand" in df.columns:
@@ -854,7 +858,7 @@ class EnergyCostCalculator:
         )
         fig = px.area(
             long,
-            x=df.columns[0],
+            x=self.original_index,
             y="kWh",
             color="Channel",
             title="PV generation & usage",
@@ -884,7 +888,7 @@ class EnergyCostCalculator:
         df = df.drop(columns=[col for col in df.columns if (df[col] == 0).all()])
         long = df.melt(id_vars=[df.columns[0]], var_name="Use case", value_name="kWh")
         fig = px.line(
-            long, x=df.columns[0], y="kWh", color="Use case", title="Storage SOC"
+            long, x=self.original_index, y="kWh", color="Use case", title="Storage SOC"
         )
 
         if show:
@@ -908,7 +912,11 @@ class EnergyCostCalculator:
         df = df.drop(columns=[col for col in df.columns if (df[col] == 0).all()])
         long = df.melt(id_vars=[df.columns[0]], var_name="Use case", value_name="kW")
         fig = px.line(
-            long, x=df.columns[0], y="kW", color="Use case", title="Charge / Discharge"
+            long,
+            x=self.original_index,
+            y="kW",
+            color="Use case",
+            title="Charge / Discharge",
         )
 
         if show:
@@ -938,8 +946,13 @@ class EnergyCostCalculator:
 
         df = df.drop(columns=[col for col in df.columns if (df[col] == 0).all()])
         long = df.melt(id_vars=[df.columns[0]], var_name="Price type", value_name="EUR")
+        # return long
         fig = px.line(
-            long, x=df.columns[0], y="EUR", color="Price type", title="Energy prices"
+            long,
+            x=self.original_index,
+            y="EUR",
+            color="Price type",
+            title="Energy prices",
         )
 
         if show:
