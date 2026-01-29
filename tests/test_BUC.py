@@ -57,8 +57,8 @@ def test_calculate_multiple_storage_worth():
 
 def test_calculate_bidding_curve():
     volume_worths = pd.DataFrame()
-    volume_worths["volume"] = [1, 2, 3, 3.5]
-    volume_worths["worth"] = [5, 7, 8, 8.2]
+    volume_worths["volume"] = [0, 1, 2, 3, 3.5]
+    volume_worths["worth"] = [0, 5, 7, 8, 8.2]
 
     bidding_curve = calculate_bidding_curve(
         volumes_worth=volume_worths, buy_or_sell_side="buyer"

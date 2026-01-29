@@ -258,8 +258,10 @@ def calculate_bidding_curve(
         pd.DataFrame: A new DataFrame with the bidding curve.
     """
 
-    if 0 not in volumes_worth["volume"].values:
-        volumes_worth.loc[len(volumes_worth), ["volume", "worth"]] = 0, 0
+    if 0 not in volumes_worth["worth"].values:
+        raise ValueError(
+            "Baseline volume is missing! There has to be one volume whose worth is 0!"
+        )
 
     if buy_or_sell_side == "buyer":
         df = volumes_worth.sort_values("volume", ascending=True)
