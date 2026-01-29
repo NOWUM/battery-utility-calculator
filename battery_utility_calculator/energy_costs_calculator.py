@@ -589,6 +589,19 @@ class EnergyCostCalculator:
 
         return self.model.objective()
 
+    def get_price_df(self) -> pd.DataFrame:
+        price_df = pd.DataFrame(
+            {
+                "supplier_prices": self.supplier_prices,
+                "eeg_prices": self.eeg_prices,
+                "community_market_prices": self.community_market_prices,
+                "wholesale_market_prices": self.wholesale_market_prices,
+            }
+        )
+        price_df.index = self.original_index.copy()
+
+        return price_df
+
     def get_energy_flows(self) -> pd.DataFrame:
         energy_flows = pd.DataFrame(index=self.timesteps)
 
@@ -775,9 +788,7 @@ class EnergyCostCalculator:
             var_name="Flow",
             value_name="kWh",
         )
-        fig = px.line(
-            long, x=df.columns[0], y="kWh", color="Flow", title="Energy flows"
-        )
+        fig = px.line(long, x="t", y="kWh", color="Flow", title="Energy flows")
 
         if show:
             fig.show()
@@ -812,9 +823,7 @@ class EnergyCostCalculator:
             var_name="source",
             value_name="kWh",
         )
-        fig = px.area(
-            long, x=df.columns[0], y="kWh", color="source", title="Demand coverage"
-        )
+        fig = px.area(long, x="t", y="kWh", color="source", title="Demand coverage")
 
         if "demand" in df.columns:
             fig.add_scatter(x=df[df.columns[0]], y=df["demand"], name="Demand")
@@ -833,6 +842,7 @@ class EnergyCostCalculator:
 
         df = df.rename(
             columns={
+                df.index.name or "index": "t",
                 "channel": "Channel",
                 "to_home": "To home",
                 "to_eeg": "To EEG",
@@ -854,7 +864,7 @@ class EnergyCostCalculator:
         )
         fig = px.area(
             long,
-            x=df.columns[0],
+            x="t",
             y="kWh",
             color="Channel",
             title="PV generation & usage",
@@ -873,6 +883,7 @@ class EnergyCostCalculator:
 
         df = storage_df.reset_index().rename(
             columns={
+                storage_df.index.name or "index": "t",
                 "soc_home": "Home",
                 "soc_eeg": "EEG",
                 "soc_wholesale": "Wholesale",
@@ -883,9 +894,7 @@ class EnergyCostCalculator:
 
         df = df.drop(columns=[col for col in df.columns if (df[col] == 0).all()])
         long = df.melt(id_vars=[df.columns[0]], var_name="Use case", value_name="kWh")
-        fig = px.line(
-            long, x=df.columns[0], y="kWh", color="Use case", title="Storage SOC"
-        )
+        fig = px.line(long, x="t", y="kWh", color="Use case", title="Storage SOC")
 
         if show:
             fig.show()
@@ -897,6 +906,7 @@ class EnergyCostCalculator:
 
         df = storage_df.reset_index().rename(
             columns={
+                storage_df.index.name or "index": "t",
                 "soc_home": "Home",
                 "soc_eeg": "EEG",
                 "soc_wholesale": "Wholesale",
@@ -907,9 +917,7 @@ class EnergyCostCalculator:
 
         df = df.drop(columns=[col for col in df.columns if (df[col] == 0).all()])
         long = df.melt(id_vars=[df.columns[0]], var_name="Use case", value_name="kW")
-        fig = px.line(
-            long, x=df.columns[0], y="kW", color="Use case", title="Charge / Discharge"
-        )
+        fig = px.line(long, x="t", y="kW", color="Use case", title="Charge / Discharge")
 
         if show:
             fig.show()
@@ -917,14 +925,7 @@ class EnergyCostCalculator:
 
     def plot_prices(self, show: bool = True):
         """Plot prices using plotly.express."""
-        price_df = pd.DataFrame(
-            {
-                "supplier_prices": self.supplier_prices,
-                "eeg_prices": self.eeg_prices,
-                "community_market_prices": self.community_market_prices,
-                "wholesale_market_prices": self.wholesale_market_prices,
-            }
-        )
+        price_df = self.get_price_df()
 
         df = price_df.reset_index().rename(
             columns={
@@ -938,9 +939,7 @@ class EnergyCostCalculator:
 
         df = df.drop(columns=[col for col in df.columns if (df[col] == 0).all()])
         long = df.melt(id_vars=[df.columns[0]], var_name="Price type", value_name="EUR")
-        fig = px.line(
-            long, x=df.columns[0], y="EUR", color="Price type", title="Energy prices"
-        )
+        fig = px.line(long, x="t", y="EUR", color="Price type", title="Energy prices")
 
         if show:
             fig.show()
