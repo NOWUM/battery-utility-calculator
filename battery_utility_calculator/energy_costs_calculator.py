@@ -658,7 +658,7 @@ class EnergyCostCalculator:
             self.model.supplier_to_home[timestep].value for timestep in self.timesteps
         ]
 
-        energy_flows["demand"] = self.demand.copy()
+        energy_flows["demand"] = self.demand.values
 
         energy_flows["index"] = self.original_index.copy()
         energy_flows.set_index("index", inplace=True)
