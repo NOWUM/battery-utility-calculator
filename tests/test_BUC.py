@@ -55,7 +55,16 @@ def test_calculate_multiple_storage_worth():
     assert (worths["worth"].values[1:] == [1, 2]).all()
 
 
-def test_calculate_bidding_curve():
+def test_calc_bid_curve_dtypes():
+    input_df = pd.DataFrame()
+    input_df["volume"] = [1, 0]
+    input_df["worth"] = [10, 0]
+    input_df["other"] = ["A", "B"]
+
+    curve = calculate_bidding_curve(input_df, "buyer")
+
+
+def test_calculate_bidding_curve_buyer():
     volume_worths = pd.DataFrame()
     volume_worths["volume"] = [0, 1, 2, 3, 3.5]
     volume_worths["worth"] = [0, 5, 7, 8, 8.2]
@@ -69,6 +78,33 @@ def test_calculate_bidding_curve():
     correct_df["marginal_price"] = [5, 2, 1, 0.2]
     correct_df["cumulative_volume"] = [1, 2, 3, 3.5]
     correct_df["marginal_price_per_kwh"] = [5, 2, 1, 0.4]
+
+    assert (bidding_curve["volume"] == correct_df["volume"]).all()
+    assert (
+        bidding_curve["marginal_price"].round(2)
+        == correct_df["marginal_price"].round(2)
+    ).all()
+    assert (bidding_curve["cumulative_volume"] == correct_df["cumulative_volume"]).all()
+    assert (
+        bidding_curve["marginal_price_per_kwh"].round(2)
+        == correct_df["marginal_price_per_kwh"].round(2)
+    ).all()
+
+
+def test_calculate_bidding_curve_seller():
+    volume_worths = pd.DataFrame()
+    volume_worths["volume"] = [0, 2, 10]
+    volume_worths["worth"] = [-10, -7, 0]
+
+    bidding_curve = calculate_bidding_curve(
+        volumes_worth=volume_worths, buy_or_sell_side="seller"
+    )
+
+    correct_df = pd.DataFrame()
+    correct_df["volume"] = [8, 2]
+    correct_df["marginal_price"] = [7, 3]
+    correct_df["cumulative_volume"] = [8, 10]
+    correct_df["marginal_price_per_kwh"] = [7 / 8, 3 / 2]
 
     assert (bidding_curve["volume"] == correct_df["volume"]).all()
     assert (

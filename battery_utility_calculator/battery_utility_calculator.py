@@ -5,6 +5,7 @@
 from typing import Literal
 
 import pandas as pd
+from pandas.api.types import is_numeric_dtype
 
 from battery_utility_calculator import EnergyCostCalculator as ECC
 from battery_utility_calculator import Storage
@@ -258,15 +259,20 @@ def calculate_bidding_curve(
         pd.DataFrame: A new DataFrame with the bidding curve.
     """
 
-    if 0 not in volumes_worth["worth"].values:
+    df = volumes_worth.copy()
+    for col in df.columns:
+        if not is_numeric_dtype(df[col]):
+            df.drop(columns=col, inplace=True)
+
+    if 0 not in df["worth"].values:
         raise ValueError(
             "Baseline volume is missing! There has to be one volume whose worth is 0!"
         )
 
     if buy_or_sell_side == "buyer":
-        df = volumes_worth.sort_values("volume", ascending=True)
+        df = df.sort_values("volume", ascending=True)
     elif buy_or_sell_side == "seller":
-        df = volumes_worth.sort_values("volume", ascending=False)
+        df = df.sort_values("volume", ascending=False)
     else:
         raise ValueError("buy_or_sell_side has to be either 'buyer' or 'seller'")
 
@@ -284,4 +290,6 @@ def calculate_bidding_curve(
     df.rename(columns={"worth": "marginal_price"}, inplace=True)
     df = df[df["volume"] != 0].reset_index(drop=True)
     df["marginal_price_per_kwh"] = df["marginal_price"] / df["volume"]
-    return df
+    return df[
+        ["volume", "cumulative_volume", "marginal_price", "marginal_price_per_kwh"]
+    ]
