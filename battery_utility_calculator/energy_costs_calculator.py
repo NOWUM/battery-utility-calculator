@@ -569,7 +569,8 @@ class EnergyCostCalculator:
             * self.hours_per_timestep
             for timestep in self.timesteps
         )
-        wholesale_cf = (1 - self.wholesale_fee) * wholesale_earnings - wholesale_costs
+        wholesale_cf = wholesale_earnings - wholesale_costs
+        wholesale_cf *= 1 - self.wholesale_fee
 
         # maximize sum of cashflows
         self.model.objective = pyo.Objective(
