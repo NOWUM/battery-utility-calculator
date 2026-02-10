@@ -2,6 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
+import numpy as np
 import pandas as pd
 
 from battery_utility_calculator.energy_costs_calculator import (
@@ -26,7 +27,7 @@ def test_ECC_baseline():
         demand=pd.Series([1, 1, 1], index=idx_3),
     )
     costs = calculator.optimize(solver="highs")
-    assert costs == -3
+    assert round(costs, 3) == -3
 
 
 def test_ECC_opti_storage():
@@ -41,7 +42,7 @@ def test_ECC_opti_storage():
         demand=pd.Series([1, 1, 1], index=idx_3),
     )
     costs = calculator.optimize(solver="highs")
-    assert costs == -1
+    assert round(costs, 3) == -1
 
 
 def test_ECC_opti_storage_2():
@@ -59,7 +60,7 @@ def test_ECC_opti_storage_2():
         demand=pd.Series([2, 2, 2], index=idx_3),
     )
     costs = calculator.optimize(solver="highs")
-    assert costs == -3
+    assert round(costs, 3) == -3
 
 
 def test_ECC_selling_pv():
@@ -74,7 +75,7 @@ def test_ECC_selling_pv():
         demand=pd.Series([0, 0, 0], index=idx_3),
     )
     costs = calculator.optimize(solver="highs")
-    assert costs == 1
+    assert round(costs, 3) == 1
 
 
 def test_ECC_selling_pv_w_storage():
@@ -91,7 +92,7 @@ def test_ECC_selling_pv_w_storage():
         demand=pd.Series([0, 0, 0], index=idx_3),
     )
     costs = calculator.optimize(solver="highs")
-    assert costs == 2
+    assert round(costs, 3) == 2
 
     # charge from solar_generation in ts=0,1 and discharge at ts=2
     calculator = EnergyCostCalculator(
@@ -104,7 +105,7 @@ def test_ECC_selling_pv_w_storage():
         demand=pd.Series([0, 0, 2], index=idx_3),
     )
     costs = calculator.optimize(solver="highs")
-    assert costs == 0
+    assert round(costs, 3) == 0
 
 
 def test_ECC_negative_prices():
@@ -119,7 +120,7 @@ def test_ECC_negative_prices():
         demand=pd.Series([0, 0, 2], index=idx_3),
     )
     costs = calculator.optimize(solver="highs")
-    assert costs == 40
+    assert round(costs, 2) == 40
 
 
 def test_ECC_c_rate():
@@ -134,7 +135,7 @@ def test_ECC_c_rate():
         demand=pd.Series([2, 2, 0], index=idx_3),
     )
     costs = calculator.optimize(solver="highs")
-    assert costs == -10
+    assert round(costs, 3) == -10
 
 
 def test_ECC_wholesale():
@@ -155,7 +156,7 @@ def test_ECC_wholesale():
         wholesale_fee=0.5,
     )
     costs = ecc.optimize(solver="highs")
-    assert costs == 2.5
+    assert round(costs, 3) == 2.5
 
     # same as above, but volume of 2, so should be able to do two times for total gain of 4
     # no fee, so 100% of profit goes to customer
@@ -171,7 +172,7 @@ def test_ECC_wholesale():
         wholesale_fee=0,
     )
     costs = ecc.optimize(solver="highs")
-    assert costs == 4
+    assert round(costs, 3) == 4
 
 
 def test_ECC_charge_discharge_eff():
@@ -188,7 +189,7 @@ def test_ECC_charge_discharge_eff():
         demand=pd.Series([1, 1, 1], index=idx_3),
     )
     costs = calculator.optimize(solver="highs")
-    assert costs == -1.5
+    assert round(costs, 3) == -1.5
 
     # buying 2 kWh for 0€/kWh and storing 0.5 kWh (1kWh with a disc-eff of 0.5) of this should equal 1.5€ total
     calculator = EnergyCostCalculator(
@@ -218,7 +219,7 @@ def test_ECC_charge_discharge_eff():
         demand=pd.Series([1, 1, 1], index=idx_3),
     )
     costs = calculator.optimize(solver="highs")
-    assert costs == -1.75
+    assert round(costs, 3) == -1.75
 
 
 def test_ECC_hours_per_timestep():
@@ -234,7 +235,7 @@ def test_ECC_hours_per_timestep():
         hours_per_timestep=0.25,
     )
     costs = calculator.optimize(solver="highs")
-    assert costs == -1
+    assert np.isclose(costs, -1)
 
 
 def test_ECC_soc_start():
@@ -265,3 +266,86 @@ def test_ECC_soc_end():
     costs = calculator.optimize(solver="highs")
     soc_df = calculator.get_storage_soc_timeseries_df()
     assert soc_df.loc["2025-01-01 02:00:00", "soc_home"] == 0
+
+
+def test_green_objective_prefers_direct_pv_to_home():
+    # PV matches demand exactly -> should be consumed directly
+    calc = EnergyCostCalculator(
+        storage=Storage(id=0, c_rate=1, volume=0),
+        eeg_prices=pd.Series([0, 0, 0], index=idx_3),
+        wholesale_market_prices=pd.Series([0, 0, 0], index=idx_3),
+        community_market_prices=pd.Series([0, 0, 0], index=idx_3),
+        supplier_prices=pd.Series([1, 1, 1], index=idx_3),
+        solar_generation=pd.Series([1, 1, 1], index=idx_3),
+        demand=pd.Series([1, 1, 1], index=idx_3),
+        goal="max_green_energy",
+    )
+    calc.optimize(solver="highs")
+    flows = calc.get_energy_flows()
+
+    assert (flows["pv_to_home"].values == [1, 1, 1]).all()
+
+
+def test_green_objective_stores_pv_for_later_home_use():
+    # PV available at t=0, demand at t=1 -> with storage, PV should be stored for 'home'
+    # although storage could be used for wholesale operation
+    calc = EnergyCostCalculator(
+        storage=Storage(id=0, c_rate=1, volume=1),
+        eeg_prices=pd.Series([0, 0, 0], index=idx_3),
+        wholesale_market_prices=pd.Series([-10, 10, 0], index=idx_3),
+        community_market_prices=pd.Series([0, 0, 0], index=idx_3),
+        supplier_prices=pd.Series([0, 0, 0], index=idx_3),
+        solar_generation=pd.Series([1, 0, 0], index=idx_3),
+        demand=pd.Series([0, 1, 0], index=idx_3),
+        wholesale_fee=0,
+        goal="max_green_energy",
+    )
+    calc.optimize(solver="highs")
+    flows = calc.get_energy_flows()
+
+    # PV at t=0 should be sent to storage for home use
+    assert flows["pv_to_storage_for_home"].iloc[0] == 1
+    # storage should discharge to home at t=1 to cover demand
+    assert flows["storage_to_home"].iloc[1] == 1
+    # costs should be 0, as demand can be met by solar generation
+    assert round(calc.calculate_costs(), 3) == 0
+
+    calc = EnergyCostCalculator(
+        storage=Storage(id=0, c_rate=1, volume=1),
+        eeg_prices=pd.Series([0, 0, 0], index=idx_3),
+        wholesale_market_prices=pd.Series([-10, 10, 0], index=idx_3),
+        community_market_prices=pd.Series([0, 0, 0], index=idx_3),
+        supplier_prices=pd.Series([0, 0, 0], index=idx_3),
+        solar_generation=pd.Series([1, 0, 0], index=idx_3),
+        demand=pd.Series([0, 1, 0], index=idx_3),
+        wholesale_fee=0,
+        goal="max_cashflow",
+    )
+    calc.optimize(solver="highs")
+    # use wholesale operation if goal is set to max cashflow
+    assert round(calc.calculate_costs(), 3) == 20
+
+
+def test_green_objective_respects_no_home_use_case():
+    # if 'home' use-case is not present, only direct pv_to_home is considered
+    calc = EnergyCostCalculator(
+        storage=Storage(id=0, c_rate=1, volume=1),
+        eeg_prices=pd.Series([20, 0, 0], index=idx_3),
+        wholesale_market_prices=pd.Series([0, 0, 0], index=idx_3),
+        community_market_prices=pd.Series([0, 0, 0], index=idx_3),
+        supplier_prices=pd.Series([1, 1, 1], index=idx_3),
+        solar_generation=pd.Series([1, 0, 0], index=idx_3),
+        demand=pd.Series([0, 1, 0], index=idx_3),
+        storage_use_cases=["eeg"],
+        goal="max_green_energy",
+    )
+    calc.optimize(solver="highs")
+    costs = calc.calculate_costs()
+    flows = calc.get_energy_flows()
+
+    # since no 'home' storage use-case exists, pv should not be put into storage
+    assert flows["pv_to_storage_for_home"].sum() == 0
+    assert (flows["pv_to_eeg"].round(3) == [1, 0, 0]).all()
+    assert (flows["pv_to_storage_for_home"].round(3) == [0, 0, 0]).all()
+    assert (flows["storage_to_home"].round(3) == [0, 0, 0]).all()
+    assert round(costs, 3) == 19

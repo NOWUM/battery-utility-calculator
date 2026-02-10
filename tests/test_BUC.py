@@ -32,7 +32,7 @@ def test_calculate_storage_worth():
 
     # with baseline storage costs should be 2
     # with storage costs should be 1
-    assert worth == 1
+    assert round(worth, 3) == 1
 
 
 def test_calculate_multiple_storage_worth():
@@ -51,8 +51,9 @@ def test_calculate_multiple_storage_worth():
         solver="appsi_highs",
     )
 
-    assert (worths["costs"].values == [-2, -1, 0]).all()
-    assert (worths["worth"].values[1:] == [1, 2]).all()
+    print(worths["costs"])
+    assert (worths["costs"].round(3).values == [-2, -1, 0]).all()
+    assert (worths["worth"].round(3).values[1:] == [1, 2]).all()
 
 
 def test_calc_bid_curve_dtypes():

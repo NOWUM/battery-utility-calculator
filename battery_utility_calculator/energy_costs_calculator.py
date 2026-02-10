@@ -14,7 +14,7 @@ from battery_utility_calculator import Storage
 log = logging.getLogger("battery_utility")
 log.setLevel(logging.WARNING)
 
-epsilon = 1e-6
+epsilon = 1e-4
 
 
 class EnergyCostCalculator:
@@ -211,9 +211,14 @@ class EnergyCostCalculator:
             )
 
         # using energy from storage at home
-        self.model.storage_to_home = pyo.Var(
-            self.timesteps, domain=pyo.NonNegativeReals
-        )
+        if "home" in self.storage_use_cases:
+            self.model.storage_to_home = pyo.Var(
+                self.timesteps, domain=pyo.NonNegativeReals
+            )
+        else:
+            self.model.storage_to_home = pyo.Var(
+                self.timesteps, domain=pyo.NonNegativeReals, bounds=(0, 0)
+            )
 
         # charging storage from wholesale market
         if self.allow_wholesale_to_storage:
@@ -686,58 +691,84 @@ class EnergyCostCalculator:
     def get_energy_flows(self) -> pd.DataFrame:
         energy_flows = pd.DataFrame(index=self.timesteps)
 
-        energy_flows["pv_to_eeg"] = [
-            self.model.pv_to_eeg[timestep].value for timestep in self.timesteps
-        ]
-        energy_flows["pv_to_wholesale"] = [
-            self.model.pv_to_wholesale[timestep].value for timestep in self.timesteps
-        ]
-        energy_flows["pv_to_community"] = [
-            self.model.pv_to_community[timestep].value for timestep in self.timesteps
-        ]
-        energy_flows["pv_to_home"] = [
-            self.model.pv_to_home[timestep].value for timestep in self.timesteps
-        ]
-        energy_flows["pv_to_storage_for_home"] = [
-            self.model.pv_to_storage[timestep, "home"].value
-            for timestep in self.timesteps
-        ]
-        energy_flows["pv_to_storage_for_eeg"] = [
-            self.model.pv_to_storage[timestep, "eeg"].value
-            for timestep in self.timesteps
-        ]
-        energy_flows["pv_to_storage_for_wholesale"] = [
-            self.model.pv_to_storage[timestep, "wholesale"].value
-            for timestep in self.timesteps
-        ]
+        if "wholesale" in self.storage_use_cases:
+            energy_flows["storage_to_wholesale"] = [
+                self.model.storage_to_wholesale[timestep].value
+                for timestep in self.timesteps
+            ]
+            energy_flows["wholesale_to_storage"] = [
+                self.model.wholesale_to_storage[timestep].value
+                for timestep in self.timesteps
+            ]
+            energy_flows["pv_to_wholesale"] = [
+                self.model.pv_to_wholesale[timestep].value
+                for timestep in self.timesteps
+            ]
+            energy_flows["pv_to_storage_for_wholesale"] = [
+                self.model.pv_to_storage[timestep, "wholesale"].value
+                for timestep in self.timesteps
+            ]
+        else:
+            energy_flows["storage_to_wholesale"] = 0
+            energy_flows["wholesale_to_storage"] = 0
+            energy_flows["pv_to_wholesale"] = 0
+            energy_flows["pv_to_storage_for_wholesale"] = 0
 
-        energy_flows["storage_to_wholesale"] = [
-            self.model.storage_to_wholesale[timestep].value
-            for timestep in self.timesteps
-        ]
-        energy_flows["wholesale_to_storage"] = [
-            self.model.wholesale_to_storage[timestep].value
-            for timestep in self.timesteps
-        ]
+        if "eeg" in self.storage_use_cases:
+            energy_flows["pv_to_eeg"] = [
+                self.model.pv_to_eeg[timestep].value for timestep in self.timesteps
+            ]
+            energy_flows["storage_to_eeg"] = [
+                self.model.storage_to_eeg[timestep].value for timestep in self.timesteps
+            ]
+            energy_flows["pv_to_storage_for_eeg"] = [
+                self.model.pv_to_storage[timestep, "eeg"].value
+                for timestep in self.timesteps
+            ]
+        else:
+            energy_flows["pv_to_eeg"] = 0
+            energy_flows["storage_to_eeg"] = 0
+            energy_flows["pv_to_storage_for_eeg"] = 0
 
-        energy_flows["storage_to_eeg"] = [
-            self.model.storage_to_eeg[timestep].value for timestep in self.timesteps
-        ]
-        energy_flows["storage_to_community"] = [
-            self.model.storage_to_community[timestep].value
-            for timestep in self.timesteps
-        ]
-        energy_flows["storage_to_home"] = [
-            self.model.storage_to_home[timestep].value for timestep in self.timesteps
-        ]
+        if "community" in self.storage_use_cases:
+            energy_flows["storage_to_community"] = [
+                self.model.storage_to_community[timestep].value
+                for timestep in self.timesteps
+            ]
+            energy_flows["pv_to_community"] = [
+                self.model.pv_to_community[timestep].value
+                for timestep in self.timesteps
+            ]
+        else:
+            energy_flows["storage_to_community"] = 0
+            energy_flows["pv_to_community"] = 0
 
-        energy_flows["supplier_to_storage"] = [
-            self.model.supplier_to_storage[timestep].value
-            for timestep in self.timesteps
-        ]
-        energy_flows["supplier_to_home"] = [
-            self.model.supplier_to_home[timestep].value for timestep in self.timesteps
-        ]
+        if "home" in self.storage_use_cases:
+            energy_flows["storage_to_home"] = [
+                self.model.storage_to_home[timestep].value
+                for timestep in self.timesteps
+            ]
+            energy_flows["supplier_to_home"] = [
+                self.model.supplier_to_home[timestep].value
+                for timestep in self.timesteps
+            ]
+            energy_flows["supplier_to_storage"] = [
+                self.model.supplier_to_storage[timestep].value
+                for timestep in self.timesteps
+            ]
+            energy_flows["pv_to_storage_for_home"] = [
+                self.model.pv_to_storage[timestep, "home"].value
+                for timestep in self.timesteps
+            ]
+            energy_flows["pv_to_home"] = [
+                self.model.pv_to_home[timestep].value for timestep in self.timesteps
+            ]
+        else:
+            energy_flows["storage_to_home"] = 0
+            energy_flows["supplier_to_home"] = 0
+            energy_flows["supplier_to_storage"] = 0
+            energy_flows["pv_to_storage_for_home"] = 0
+            energy_flows["pv_to_home"] = 0
 
         energy_flows["demand"] = self.demand.values
 
