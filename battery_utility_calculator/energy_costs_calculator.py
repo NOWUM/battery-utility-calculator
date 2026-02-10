@@ -14,6 +14,8 @@ from battery_utility_calculator import Storage
 log = logging.getLogger("battery_utility")
 log.setLevel(logging.WARNING)
 
+epsilon = 1e-6
+
 
 class EnergyCostCalculator:
     def __init__(
@@ -36,6 +38,7 @@ class EnergyCostCalculator:
         allow_pv_to_wholesale: bool = True,
         allow_storage_to_wholesale: bool = True,
         wholesale_fee: float = 0.3,
+        goal: str = "max_cashflow",
     ):
         """Optimizer for prosumer energy management, calculating minimum costs to cover energy demand.
 
@@ -82,6 +85,7 @@ class EnergyCostCalculator:
         self.allow_storage_to_community = allow_storage_to_community
         self.allow_community_to_storage = allow_community_to_storage
         self.wholesale_fee = wholesale_fee
+        self.goal = goal
 
         self.__check_prepare_timeseries_indices__()
         self.timesteps = list(range(len(self.demand)))
@@ -91,7 +95,11 @@ class EnergyCostCalculator:
         self.model = pyo.ConcreteModel()
         self.set_model_variables()
         self.set_model_constraints()
-        self.set_model_objective()
+
+        if self.goal == "max_cashflow":
+            self.set_max_cashflow_objective()
+        elif self.goal == "max_green_energy":
+            self.set_max_green_energy_objective()
 
     def __check_prepare_timeseries_indices__(self) -> None:
         """Check if all timeseries indices are valid."""
@@ -485,92 +493,18 @@ class EnergyCostCalculator:
 
         log.info("Model constraints set up successfully.")
 
-    def set_model_objective(self):
+    def _get_value(self, var, use_values):
+        """Helper to conditionally apply .value to a Pyomo variable."""
+        return var.value if use_values else var
+
+    def set_max_cashflow_objective(self):
         log.info("Setting up model objective...")
 
-        # community market cashflow
-        community_cf = (
-            # selling from storage to community market
-            sum(
-                self.model.storage_to_community[timestep]
-                * self.community_market_prices.loc[timestep]
-                * self.hours_per_timestep
-                for timestep in self.timesteps
-            )
-            # selling from pv to community market
-            + sum(
-                self.model.pv_to_community[timestep]
-                * self.community_market_prices.loc[timestep]
-                * self.hours_per_timestep
-                for timestep in self.timesteps
-            )
-            # buying from community market to storage
-            - sum(
-                self.model.community_to_storage[timestep]
-                * self.community_market_prices.loc[timestep]
-                * self.hours_per_timestep
-                for timestep in self.timesteps
-            )
-            # buying from community market to home
-            - sum(
-                self.model.community_to_home[timestep]
-                * self.community_market_prices.loc[timestep]
-                * self.hours_per_timestep
-                for timestep in self.timesteps
-            )
-        )
-
-        # supplier cashflow
-        supplier_cf = (
-            # buying energy from supplier to storage
-            -sum(
-                self.model.supplier_to_storage[timestep]
-                * self.supplier_prices.loc[timestep]
-                * self.hours_per_timestep
-                for timestep in self.timesteps
-            )
-            # buying energy from supplier to home
-            - sum(
-                self.model.supplier_to_home[timestep]
-                * self.supplier_prices.loc[timestep]
-                * self.hours_per_timestep
-                for timestep in self.timesteps
-            )
-        )
-
-        # EEG cashflow
-        eeg_cf = (
-            # selling from storage for EEG
-            sum(
-                self.model.storage_to_eeg[timestep]
-                * self.eeg_prices.loc[timestep]
-                * self.hours_per_timestep
-                for timestep in self.timesteps
-            )
-            # selling from PV for EEG
-            + sum(
-                self.model.pv_to_eeg[timestep]
-                * self.eeg_prices.loc[timestep]
-                * self.hours_per_timestep
-                for timestep in self.timesteps
-            )
-        )
-
-        # wholesale cashflow
-        wholesale_earnings = sum(
-            self.model.storage_to_wholesale[timestep]
-            * self.wholesale_market_prices.loc[timestep]
-            * self.hours_per_timestep
-            for timestep in self.timesteps
-        )
-        wholesale_costs = sum(
-            self.model.wholesale_to_storage[timestep]
-            * self.wholesale_market_prices.loc[timestep]
-            * self.hours_per_timestep
-            for timestep in self.timesteps
-        )
-        wholesale_cf = wholesale_earnings - wholesale_costs
-        wholesale_cf *= 1 - self.wholesale_fee
+        cashflows = self.calculate_cashflows(use_values=False)
+        community_cf = cashflows["community"]
+        supplier_cf = cashflows["supplier"]
+        eeg_cf = cashflows["eeg"]
+        wholesale_cf = cashflows["wholesale"]
 
         # maximize sum of cashflows
         self.model.objective = pyo.Objective(
@@ -578,6 +512,152 @@ class EnergyCostCalculator:
         )
 
         log.info("Model objective set up successfully.")
+
+    def calculate_cashflows(self, use_values=False):
+        # community market cashflow
+        community_cf = self.calculate_community_cashflow(use_values=use_values)
+
+        # supplier cashflow
+        supplier_cf = self.calculate_supplier_cashflow(use_values=use_values)
+
+        # EEG cashflow
+        eeg_cf = self.calculate_eeg_cashflow(use_values=use_values)
+
+        # wholesale cashflow
+        wholesale_cf = self.calculate_wholesale_cashflow(use_values=use_values)
+
+        return {
+            "community": community_cf,
+            "supplier": supplier_cf,
+            "eeg": eeg_cf,
+            "wholesale": wholesale_cf,
+        }
+
+    def calculate_community_cashflow(self, use_values=False):
+        return (
+            sum(
+                self._get_value(self.model.storage_to_community[timestep], use_values)
+                * self.community_market_prices.loc[timestep]
+                * self.hours_per_timestep
+                for timestep in self.timesteps
+            )
+            + sum(
+                self._get_value(self.model.pv_to_community[timestep], use_values)
+                * self.community_market_prices.loc[timestep]
+                * self.hours_per_timestep
+                for timestep in self.timesteps
+            )
+            - sum(
+                self._get_value(self.model.community_to_storage[timestep], use_values)
+                * self.community_market_prices.loc[timestep]
+                * self.hours_per_timestep
+                for timestep in self.timesteps
+            )
+            - sum(
+                self._get_value(self.model.community_to_home[timestep], use_values)
+                * self.community_market_prices.loc[timestep]
+                * self.hours_per_timestep
+                for timestep in self.timesteps
+            )
+        )
+
+    def calculate_supplier_cashflow(self, use_values=False):
+        return -(1 - epsilon) * sum(
+            self._get_value(self.model.supplier_to_storage[timestep], use_values)
+            * self.supplier_prices.loc[timestep]
+            * self.hours_per_timestep
+            for timestep in self.timesteps
+        ) - sum(
+            self._get_value(self.model.supplier_to_home[timestep], use_values)
+            * self.supplier_prices.loc[timestep]
+            * self.hours_per_timestep
+            for timestep in self.timesteps
+        )
+
+    def calculate_eeg_cashflow(self, use_values=False):
+        return (1 - epsilon) * sum(
+            self._get_value(self.model.storage_to_eeg[timestep], use_values)
+            * self.eeg_prices.loc[timestep]
+            * self.hours_per_timestep
+            for timestep in self.timesteps
+        ) + sum(
+            self._get_value(self.model.pv_to_eeg[timestep], use_values)
+            * self.eeg_prices.loc[timestep]
+            * self.hours_per_timestep
+            for timestep in self.timesteps
+        )
+
+    def calculate_wholesale_cashflow(self, use_values=False):
+        wholesale_earnings = sum(
+            self._get_value(self.model.storage_to_wholesale[timestep], use_values)
+            * self.wholesale_market_prices.loc[timestep]
+            * self.hours_per_timestep
+            for timestep in self.timesteps
+        )
+        wholesale_costs = sum(
+            self._get_value(self.model.wholesale_to_storage[timestep], use_values)
+            * self.wholesale_market_prices.loc[timestep]
+            * self.hours_per_timestep
+            for timestep in self.timesteps
+        )
+        return (wholesale_earnings - wholesale_costs) * (1 - self.wholesale_fee)
+
+    def set_max_green_energy_objective(self):
+        """Set objective to maximize PV self-consumption.
+
+        This objective favors using PV generation for the household either
+        immediately (`pv_to_home`) or by storing PV specifically intended
+        for home use (`pv_to_storage[..., 'home']`). If the 'home'
+        use-case is not present the objective will only maximize
+        `pv_to_home`.
+        """
+        log.info("Setting up green-energy objective (maximize PV self-consumption)...")
+
+        # maximize direct PV consumption
+        expr = sum(
+            self.model.pv_to_home[timestep] * self.hours_per_timestep
+            for timestep in self.timesteps
+        )
+
+        # include PV charged to storage for later home use when 'home' use-case exists
+        if "home" in self.storage_use_cases:
+            expr = expr + sum(
+                self.model.pv_to_storage[timestep, "home"] * self.hours_per_timestep
+                for timestep in self.timesteps
+            )
+
+        cashflows = self.calculate_cashflows()
+        eeg_cf = cashflows["eeg"]
+        community_cf = cashflows["community"]
+        supplier_cf = cashflows["supplier"]
+        wholesale_cf = cashflows["wholesale"]
+        total_cashflow = eeg_cf + supplier_cf + community_cf + wholesale_cf
+
+        expr = expr + epsilon * total_cashflow
+
+        self.model.objective = pyo.Objective(expr=expr, sense=pyo.maximize)
+
+        log.info("Green-energy objective set up successfully.")
+
+    def calculate_costs(self) -> float:
+        """Calculate monetary cashflow from the optimized model and return it.
+
+        Returns the same cashflow expression that `set_max_cashflow_objective`
+        maximizes. Requires the model to be optimized first (raises ValueError
+        otherwise).
+        """
+        if not self.is_optimized:
+            raise ValueError("Model not optimized yet - run optimize() first!")
+
+        cashflows = self.calculate_cashflows(use_values=True)
+
+        total = (
+            cashflows["community"]
+            + cashflows["supplier"]
+            + cashflows["eeg"]
+            + cashflows["wholesale"]
+        )
+        return float(total)
 
     def optimize(self, solver: str = "gurobi"):
         optimizer = pyo.SolverFactory(
