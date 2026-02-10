@@ -231,6 +231,12 @@ def calculate_multiple_storage_worth(
         stor_df["worth"] = [storage_worth]
 
         df = pd.concat([df, stor_df], ignore_index=True)
+        df["worth"] = df["worth"].astype(float)
+        df["costs"] = df["costs"].astype(float)
+        df["c_rate"] = df["c_rate"].astype(float)
+        df["volume"] = df["volume"].astype(float)
+        df["charge_efficiency"] = df["charge_efficiency"].astype(float)
+        df["discharge_efficiency"] = df["discharge_efficiency"].astype(float)
 
         if return_charge_timeseries:
             storages_charge[storage.id] = ecc.get_storage_charge_timeseries_df()
