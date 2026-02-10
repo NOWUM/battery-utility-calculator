@@ -9,8 +9,8 @@ class Storage:
         id: int,
         c_rate: float,
         volume: float,
-        charge_efficiency: float = 1,
-        discharge_efficiency: float = 1,
+        charge_efficiency: float = 0.98,
+        discharge_efficiency: float = 0.98,
     ):
         """Represents a storage unit for energy.
 
