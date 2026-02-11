@@ -266,6 +266,24 @@ def calculate_bidding_curve(
     """
 
     df = volumes_worth.copy()
+
+    if "worth" not in df.columns:
+        raise KeyError("'worth' column not found!")
+    elif "volume" not in df.columns:
+        raise KeyError("'volume' column not found!")
+
+    if not is_numeric_dtype(df["worth"]):
+        try:
+            df["worth"] = df["worth"].astype(float)
+        except ValueError:
+            raise ValueError("Column 'worth' not numeric and cannot be converted!")
+
+    if not is_numeric_dtype(df["volume"]):
+        try:
+            df["volume"] = df["volume"].astype(float)
+        except ValueError:
+            raise ValueError("Column 'volume' not numeric and cannot be converted!")
+
     for col in df.columns:
         if not is_numeric_dtype(df[col]):
             df.drop(columns=col, inplace=True)
