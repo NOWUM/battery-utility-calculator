@@ -44,7 +44,6 @@ test = [
 ]
 
 [project.urls]
-Homepage = "https://assume-project.de/"
 Repository = "https://github.com/nowum/battery-utility-calculator"
 Issues = "https://github.com/nowum/battery-utility-calculator/issues"
 
@@ -67,13 +66,3 @@ ignore = ["E501", "G004", "E731"]
     "ARG",  # allow unused arguments for pytest fixtures
     "F841", # allow unused local variables
 ]
-
-[tool.pytest]
-testpaths = "tests"
-
-[tool.coverage.run]
-omit = ["tests/*"]
-
-[tool.coverage.report]
-# https://stackoverflow.com/a/5850364
-exclude_lines = ["if __name__ == .__main__.:"]
