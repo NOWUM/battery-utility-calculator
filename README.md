@@ -39,7 +39,7 @@ from battery_utility_calculator.battery_utility_calculator import (
     calculate_bidding_curve,
 )
 
-# single worth
+# single worth (basic use)
 baseline = Storage(0, 1, 0, 1)
 candidate = Storage(0, 1, 1, 1)
 worth = calculate_storage_worth(
@@ -54,7 +54,23 @@ worth = calculate_storage_worth(
     solver="appsi_highs",
 )
 
-# multiple worths
+# requesting cashflow breakdown from the same call
+result = calculate_storage_worth(
+    baseline_storage=baseline,
+    storage_to_calculate=candidate,
+    eeg_prices=pd.Series([0, 0, 0]),
+    wholesale_market_prices=pd.Series([0, 0, 0]),
+    community_market_prices=pd.Series([0, 0, 0]),
+    supplier_prices=pd.Series([0, 1, 1]),
+    solar_generation=pd.Series([0, 0, 0]),
+    demand=pd.Series([1, 1, 1]),
+    return_cashflows=True,
+    solver="appsi_highs",
+)
+# result is a dict containing keys 'worth',
+# 'baseline_cashflows' and 'storage_to_calc_cashflows'.
+
+# multiple worths (cashflows are available by setting return_cashflows=True)
 storages = [Storage(0, 1, 1, 1), Storage(0, 1, 2, 1)]
 df = calculate_multiple_storage_worth(
     baseline_storage=baseline,

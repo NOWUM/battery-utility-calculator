@@ -664,6 +664,28 @@ class EnergyCostCalculator:
         )
         return float(total)
 
+    # ------------------------------------------------------------------
+    def get_cashflows(self) -> dict:
+        """Return the individual cashflow components from the optimized model.
+
+        The dictionary contains four keys: ``"community"``, ``"supplier"``,
+        ``"eeg"`` and ``"wholesale"``. Values are floats representing the
+        EUR cashflow for each market. A negative value means a cost, a positive
+        value means a revenue.
+
+        Raises
+        ------
+        ValueError
+            If called before ``optimize()`` has been run.
+        """
+        if not self.is_optimized:
+            raise ValueError("Model not optimized yet - run optimize() first!")
+
+        # calculate_cashflows with ``use_values=True`` gives numeric results
+        raw = self.calculate_cashflows(use_values=True)
+        # ensure all entries are floats
+        return {k: float(v) for k, v in raw.items()}
+
     def optimize(self, solver: str = "gurobi"):
         optimizer = pyo.SolverFactory(
             solver,
@@ -856,7 +878,16 @@ class EnergyCostCalculator:
 
         return charge_df
 
-    def output_results(self):
+    def output_results(self, include_cashflows: bool = False):
+        """Return convenience timeseries dict with optional cashflow breakdown.
+
+        Parameters
+        ----------
+        include_cashflows : bool, optional
+            If ``True`` the returned dictionary will contain an additional
+            key ``"cashflows"`` whose value is the output of
+            :meth:`get_cashflows`. Default is ``False``.
+        """
         if not self.is_optimized:
             raise ValueError(
                 "Model not optimized yet - run class method optimize() first!"
@@ -866,11 +897,16 @@ class EnergyCostCalculator:
         pv_timeseries = self.get_solar_generation_timeseries_df()
         storage_timeseries = self.get_storage_soc_timeseries_df()
 
-        return {
+        results = {
             "demand": demand_timeseries,
             "pv": pv_timeseries,
             "storage": storage_timeseries,
         }
+
+        if include_cashflows:
+            results["cashflows"] = self.get_cashflows()
+
+        return results
 
     def plot_energy_flows(self, show: bool = True) -> go.Figure:
         """Quick energy flow plot using plotly.express."""

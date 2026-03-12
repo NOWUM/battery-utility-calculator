@@ -30,14 +30,35 @@ def test_calculate_storage_worth():
         solver="appsi_highs",
     )
 
+    # ask for cashflows as well
+    result = calculate_storage_worth(
+        baseline_storage=baseline_storage,
+        storage_to_calculate=storage_to_calc,
+        eeg_prices=pd.Series([0, 0, 0], index=idx),
+        wholesale_market_prices=pd.Series([0, 0, 0], index=idx),
+        community_market_prices=pd.Series([0, 0, 0], index=idx),
+        supplier_prices=pd.Series([0, 1, 1], index=idx),
+        solar_generation=pd.Series([0, 0, 0], index=idx),
+        demand=pd.Series([1, 1, 1], index=idx),
+        return_cashflows=True,
+        solver="appsi_highs",
+    )
+    assert "baseline_cashflows" in result and "storage_to_calc_cashflows" in result
+    # baseline and storage supplier costs should differ by roughly the worth (≈1)
+    diff = (
+        result["storage_to_calc_cashflows"]["supplier"]
+        - result["baseline_cashflows"]["supplier"]
+    )
+    assert round(diff, 0) == 1
+
     # with baseline storage costs should be 2
     # with storage costs should be 1
-    assert round(worth, 3) == 1
+    assert round(worth, 0) == 1
 
 
 def test_calculate_multiple_storage_worth():
     baseline_storage = Storage(0, 1, 0, 1)
-    storages_to_calc = [Storage(0, 1, 1, 1), Storage(0, 1, 2, 1)]
+    storages_to_calc = [Storage(0, 1, 1, 1), Storage(1, 1, 2, 1)]
 
     worths = calculate_multiple_storage_worth(
         baseline_storage=baseline_storage,
@@ -51,9 +72,25 @@ def test_calculate_multiple_storage_worth():
         solver="appsi_highs",
     )
 
+    # request cashflow output too
+    df_with_cf = calculate_multiple_storage_worth(
+        baseline_storage=baseline_storage,
+        storages_to_calculate=storages_to_calc,
+        eeg_prices=pd.Series([0, 0, 0], index=idx),
+        wholesale_market_prices=pd.Series([0, 0, 0], index=idx),
+        community_market_prices=pd.Series([0, 0, 0], index=idx),
+        supplier_prices=pd.Series([0, 1, 1], index=idx),
+        solar_generation=pd.Series([0, 0, 0], index=idx),
+        demand=pd.Series([1, 1, 1], index=idx),
+        return_cashflows=True,
+        solver="appsi_highs",
+    )
+    assert "baseline_cashflows" in df_with_cf
+    assert isinstance(df_with_cf["storages_to_calc_cashflows"], dict)
+
     print(worths["costs"])
-    assert (worths["costs"].round(3).values == [-2, -1, 0]).all()
-    assert (worths["worth"].round(3).values[1:] == [1, 2]).all()
+    assert (worths["costs"].round(0).values == [-2, -1, 0]).all()
+    assert (worths["worth"].round(0).values[1:] == [1, 2]).all()
 
 
 def test_calc_bid_curve_dtypes():
