@@ -120,6 +120,7 @@ class EnergyCostCalculator:
         self.original_index = ref_index
         new_index = pd.RangeIndex(len(ref_index))
 
+        self.demand.index = new_index
         # ensure all indices match the reference
         for name in attrs:
             series = getattr(self, name).copy()
