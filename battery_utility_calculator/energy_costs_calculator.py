@@ -185,7 +185,14 @@ class EnergyCostCalculator:
         self.model.pv_to_home = pyo.Var(self.timesteps, domain=pyo.NonNegativeReals)
 
         # selling from storage for EEG
-        self.model.storage_to_eeg = pyo.Var(self.timesteps, domain=pyo.NonNegativeReals)
+        if "eeg" in self.storage_use_cases:
+            self.model.storage_to_eeg = pyo.Var(
+                self.timesteps, domain=pyo.NonNegativeReals
+            )
+        else:
+            self.model.storage_to_eeg = pyo.Var(
+                self.timesteps, domain=pyo.NonNegativeReals, bounds=(0, 0)
+            )
 
         # selling from storage on wholesale
         if self.allow_storage_to_wholesale:
