@@ -360,3 +360,37 @@ def test_green_objective_respects_no_home_use_case():
     assert (flows["pv_to_storage_for_home"].round(3) == [0, 0, 0]).all()
     assert (flows["storage_to_home"].round(3) == [0, 0, 0]).all()
     assert round(costs, 0) == 19
+
+
+def test_calculate_storage_worth_disable_eeg_for_small_system():
+    storage = Storage(id=0, c_rate=1, volume=0)
+
+    solar_generation_large = pd.Series([1, 1, 1], index=idx_3)
+    solar_generation_small = pd.Series([0.5, 0.5, 0.5], index=idx_3)
+
+    ecc_with = EnergyCostCalculator(
+        storage=storage,
+        eeg_prices=pd.Series([1, 1, 1], index=idx_3),
+        wholesale_market_prices=pd.Series([0, 0, 0], index=idx_3),
+        community_market_prices=pd.Series([0, 0, 0], index=idx_3),
+        supplier_prices=pd.Series([0, 0, 0], index=idx_3),
+        solar_generation=solar_generation_large,
+        demand=pd.Series([0, 0, 0], index=idx_3),
+        disable_eeg_for_small_system=True,
+    )
+    costs_with_eeg = ecc_with.optimize("appsi_highs")
+    assert round(costs_with_eeg) == 3
+
+    ecc_without = EnergyCostCalculator(
+        storage=storage,
+        eeg_prices=pd.Series([1, 1, 1], index=idx_3),
+        wholesale_market_prices=pd.Series([0, 0, 0], index=idx_3),
+        community_market_prices=pd.Series([0, 0, 0], index=idx_3),
+        supplier_prices=pd.Series([0, 0, 0], index=idx_3),
+        solar_generation=solar_generation_small,
+        demand=pd.Series([0, 0, 0], index=idx_3),
+        disable_eeg_for_small_system=True,
+    )
+    costs_without_eeg = ecc_without.optimize("appsi_highs")
+
+    assert round(costs_without_eeg) == 0

@@ -29,6 +29,7 @@ def calculate_storage_worth(
     allow_storage_to_wholesale: bool = False,
     return_charge_timeseries: bool = False,
     return_cashflows: bool = False,
+    disable_eeg_for_small_system: bool = False,
     solver: str = "gurobi",
 ) -> dict | float:
     """Calculates the worth (value) of a single storage (compared to a baseline storage).
@@ -76,6 +77,7 @@ def calculate_storage_worth(
         allow_community_to_storage=allow_community_to_storage,
         allow_pv_to_community=allow_pv_to_community,
         allow_storage_to_wholesale=allow_storage_to_wholesale,
+        disable_eeg_for_small_system=disable_eeg_for_small_system,
     )
     baseline_costs = baseline_ecc.optimize(solver=solver)
 
@@ -95,6 +97,7 @@ def calculate_storage_worth(
         allow_community_to_storage=allow_community_to_storage,
         allow_pv_to_community=allow_pv_to_community,
         allow_storage_to_wholesale=allow_storage_to_wholesale,
+        disable_eeg_for_small_system=disable_eeg_for_small_system,
     )
     to_calc_costs = to_calc_ecc.optimize(solver=solver)
 
@@ -135,6 +138,7 @@ def calculate_multiple_storage_worth(
     wholesale_fee: float = 0.3,
     return_charge_timeseries: bool = False,
     return_cashflows: bool = False,
+    disable_eeg_for_small_system: bool = False,
     solver: str = "gurobi",
     *args,
     **kwargs,
@@ -189,6 +193,7 @@ def calculate_multiple_storage_worth(
         community_market_prices=community_market_prices,
         wholesale_market_prices=wholesale_market_prices,
         wholesale_fee=wholesale_fee,
+        disable_eeg_for_small_system=disable_eeg_for_small_system,
         *args,
         **kwargs,
     )
@@ -242,6 +247,7 @@ def calculate_multiple_storage_worth(
             eeg_prices=eeg_prices,
             community_market_prices=community_market_prices,
             wholesale_market_prices=wholesale_market_prices,
+            disable_eeg_for_small_system=disable_eeg_for_small_system,
             *args,
             **kwargs,
         )
