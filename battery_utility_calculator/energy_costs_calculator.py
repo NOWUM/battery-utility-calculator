@@ -38,7 +38,7 @@ class EnergyCostCalculator:
         allow_wholesale_to_storage: bool = True,
         allow_storage_to_wholesale: bool = True,
         wholesale_fee: float = 0.3,
-        disable_eeg_for_small_system: bool = True,
+        eeg_eligible: bool = True,
         goal: str = "max_cashflow",
     ):
         """Optimizer for prosumer energy management, calculating minimum costs to cover energy demand.
@@ -86,13 +86,11 @@ class EnergyCostCalculator:
         self.allow_storage_to_community = allow_storage_to_community
         self.allow_community_to_storage = allow_community_to_storage
         self.wholesale_fee = wholesale_fee
-        self.disable_eeg_for_small_system = disable_eeg_for_small_system
+        self.eeg_eligible = eeg_eligible
         self.goal = goal
 
-        if self.disable_eeg_for_small_system:
-            # If PV system is <= 0.8 kWp, no EEG feed-in tariff applies.
-            if self.solar_generation.max() <= 0.8:
-                self.eeg_prices = self.eeg_prices * 0
+        if not self.eeg_eligible:
+            self.eeg_prices = self.eeg_prices * 0
 
         self.__check_prepare_timeseries_indices__()
         self.timesteps = list(range(len(self.demand)))

@@ -362,7 +362,7 @@ def test_green_objective_respects_no_home_use_case():
     assert round(costs, 0) == 19
 
 
-def test_calculate_storage_worth_disable_eeg_for_small_system():
+def test_calculate_storage_worth_eeg_eligible():
     storage = Storage(id=0, c_rate=1, volume=0)
 
     solar_generation_large = pd.Series([1, 1, 1], index=idx_3)
@@ -376,7 +376,7 @@ def test_calculate_storage_worth_disable_eeg_for_small_system():
         supplier_prices=pd.Series([0, 0, 0], index=idx_3),
         solar_generation=solar_generation_large,
         demand=pd.Series([0, 0, 0], index=idx_3),
-        disable_eeg_for_small_system=True,
+        eeg_eligible=True,
     )
     costs_with_eeg = ecc_with.optimize("appsi_highs")
     assert round(costs_with_eeg) == 3
@@ -389,7 +389,7 @@ def test_calculate_storage_worth_disable_eeg_for_small_system():
         supplier_prices=pd.Series([0, 0, 0], index=idx_3),
         solar_generation=solar_generation_small,
         demand=pd.Series([0, 0, 0], index=idx_3),
-        disable_eeg_for_small_system=True,
+        eeg_eligible=False,
     )
     costs_without_eeg = ecc_without.optimize("appsi_highs")
 
