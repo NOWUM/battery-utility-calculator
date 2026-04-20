@@ -28,6 +28,7 @@ def calculate_storage_worth(
     allow_pv_to_community: bool = False,
     allow_storage_to_wholesale: bool = False,
     return_charge_timeseries: bool = False,
+    return_soc_timeseries: bool = False,
     return_cashflows: bool = False,
     eeg_eligible: bool = True,
     solver: str = "gurobi",
@@ -51,12 +52,14 @@ def calculate_storage_worth(
         allow_storage_to_wholesale (bool, optional): Wether to allow selling from storage to wholesale market. Defaults to False.
         return_charge_timeseries (bool, optional): If True, returns dict with charge timeseries data.
             Default is False.
+        return_soc_timeseries (bool, optional): If True, returns dict with SOC timeseries data.
+            Default is False.
         return_cashflows (bool, optional): If True, returns cashflow breakdown for baseline and
             candidate storage. Default is False.
         solver (str, optional): Which solver to use. Defaults to "gurobi".
 
     Returns:
-        float or dict: If neither return_charge_timeseries nor return_cashflows are
+        float or dict: If no return flags are
             requested, returns worth as float. Otherwise a dict containing at least
             ``worth`` and additional fields depending on the flags.
     """
@@ -105,7 +108,7 @@ def calculate_storage_worth(
     storage_worth = to_calc_costs - baseline_costs
 
     # prepare optional outputs
-    if return_charge_timeseries or return_cashflows:
+    if return_charge_timeseries or return_soc_timeseries or return_cashflows:
         result = {"worth": storage_worth}
 
         if return_charge_timeseries:
@@ -114,6 +117,11 @@ def calculate_storage_worth(
             storage_charge = to_calc_ecc.get_storage_charge_timeseries_df()
             result["baseline_charge_ts"] = baseline_charge
             result["storage_to_calc_charge_ts"] = storage_charge
+        if return_soc_timeseries:
+            baseline_soc = baseline_ecc.get_storage_soc_timeseries_df()
+            storage_soc = to_calc_ecc.get_storage_soc_timeseries_df()
+            result["baseline_soc_ts"] = baseline_soc
+            result["storage_to_calc_soc_ts"] = storage_soc
 
         if return_cashflows:
             baseline_cf = baseline_ecc.get_cashflows()
@@ -137,6 +145,7 @@ def calculate_multiple_storage_worth(
     wholesale_market_prices: pd.Series,
     wholesale_fee: float = 0.3,
     return_charge_timeseries: bool = False,
+    return_soc_timeseries: bool = False,
     return_cashflows: bool = False,
     eeg_eligible: bool = False,
     solver: str = "gurobi",
@@ -160,13 +169,14 @@ def calculate_multiple_storage_worth(
         allow_pv_to_community (bool, optional): Wether to allow selling PV energy to community. Defaults to False.
         allow_storage_to_wholesale (bool, optional): Wether to allow selling from storage to wholesale market. Defaults to False.
         return_charge_timeseries (bool, optional): If True, returns dict with charge timeseries data. Defaults to False.
+        return_soc_timeseries (bool, optional): If True, returns dict with SOC timeseries data. Defaults to False.
         return_cashflows (bool, optional): If True, returns dict with cashflow results for each storage. Defaults to False.
         check_timeseries (bool, optional): Wether to check time series. Defaults to True.
         solver (str, optional): Which solver to use. Defaults to "gurobi".
 
     Returns:
-        pd.DataFrame or dict: If neither return flag is set, returns DataFrame with storage parameters and worth. If either ``return_charge_timeseries``
-        or ``return_cashflows`` is True, a dict is returned with ``results_df``
+        pd.DataFrame or dict: If no return flag is set, returns DataFrame with storage parameters and worth. If any return
+        flag is True, a dict is returned with ``results_df``
         plus the requested additional information.
     """
 
@@ -175,6 +185,12 @@ def calculate_multiple_storage_worth(
     ) != len(set([stor.id for stor in storages_to_calculate])):
         msg = "Multiple storages with same ID are not allowed when returning charge timeseries data as "
         msg += "IDs are used to index storages_to_calc_charge_timeseries dictionary"
+        raise ValueError(msg)
+    if return_soc_timeseries and len(
+        [stor.id for stor in storages_to_calculate]
+    ) != len(set([stor.id for stor in storages_to_calculate])):
+        msg = "Multiple storages with same ID are not allowed when returning SOC timeseries data as "
+        msg += "IDs are used to index storages_to_calc_soc_timeseries dictionary"
         raise ValueError(msg)
     if return_cashflows and len([stor.id for stor in storages_to_calculate]) != len(
         set([stor.id for stor in storages_to_calculate])
@@ -201,6 +217,8 @@ def calculate_multiple_storage_worth(
 
     if return_charge_timeseries:
         baseline_charge = baseline_ecc.get_storage_charge_timeseries_df()
+    if return_soc_timeseries:
+        baseline_soc = baseline_ecc.get_storage_soc_timeseries_df()
     if return_cashflows:
         baseline_cashflows = baseline_ecc.get_cashflows()
 
@@ -237,6 +255,7 @@ def calculate_multiple_storage_worth(
     ]
 
     storages_charge = {}
+    storages_soc = {}
     storages_cashflows = {}
     for storage in storages_to_calculate:
         ecc = ECC(
@@ -273,15 +292,20 @@ def calculate_multiple_storage_worth(
 
         if return_charge_timeseries:
             storages_charge[storage.id] = ecc.get_storage_charge_timeseries_df()
+        if return_soc_timeseries:
+            storages_soc[storage.id] = ecc.get_storage_soc_timeseries_df()
         if return_cashflows:
             storages_cashflows[storage.id] = ecc.get_cashflows()
 
     # return depending on requested data
-    if return_charge_timeseries or return_cashflows:
+    if return_charge_timeseries or return_soc_timeseries or return_cashflows:
         out = {"results_df": df}
         if return_charge_timeseries:
             out["baseline_charge_ts"] = baseline_charge
             out["storages_to_calc_charge_ts"] = storages_charge
+        if return_soc_timeseries:
+            out["baseline_soc_ts"] = baseline_soc
+            out["storages_to_calc_soc_ts"] = storages_soc
         if return_cashflows:
             out["baseline_cashflows"] = baseline_cashflows
             out["storages_to_calc_cashflows"] = storages_cashflows

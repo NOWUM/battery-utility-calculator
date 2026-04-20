@@ -44,6 +44,7 @@ def test_calculate_storage_worth():
         solver="appsi_highs",
     )
     assert "baseline_cashflows" in result and "storage_to_calc_cashflows" in result
+    assert "baseline_soc_ts" not in result and "storage_to_calc_soc_ts" not in result
     # baseline and storage supplier costs should differ by roughly the worth (≈1)
     diff = (
         result["storage_to_calc_cashflows"]["supplier"]
@@ -54,6 +55,20 @@ def test_calculate_storage_worth():
     # with baseline storage costs should be 2
     # with storage costs should be 1
     assert round(worth, 0) == 1
+
+    soc_result = calculate_storage_worth(
+        baseline_storage=baseline_storage,
+        storage_to_calculate=storage_to_calc,
+        eeg_prices=pd.Series([0, 0, 0], index=idx),
+        wholesale_market_prices=pd.Series([0, 0, 0], index=idx),
+        community_market_prices=pd.Series([0, 0, 0], index=idx),
+        supplier_prices=pd.Series([0, 1, 1], index=idx),
+        solar_generation=pd.Series([0, 0, 0], index=idx),
+        demand=pd.Series([1, 1, 1], index=idx),
+        return_soc_timeseries=True,
+        solver="appsi_highs",
+    )
+    assert "baseline_soc_ts" in soc_result and "storage_to_calc_soc_ts" in soc_result
 
 
 def test_calculate_multiple_storage_worth():
@@ -87,6 +102,21 @@ def test_calculate_multiple_storage_worth():
     )
     assert "baseline_cashflows" in df_with_cf
     assert isinstance(df_with_cf["storages_to_calc_cashflows"], dict)
+
+    df_with_soc = calculate_multiple_storage_worth(
+        baseline_storage=baseline_storage,
+        storages_to_calculate=storages_to_calc,
+        eeg_prices=pd.Series([0, 0, 0], index=idx),
+        wholesale_market_prices=pd.Series([0, 0, 0], index=idx),
+        community_market_prices=pd.Series([0, 0, 0], index=idx),
+        supplier_prices=pd.Series([0, 1, 1], index=idx),
+        solar_generation=pd.Series([0, 0, 0], index=idx),
+        demand=pd.Series([1, 1, 1], index=idx),
+        return_soc_timeseries=True,
+        solver="appsi_highs",
+    )
+    assert "baseline_soc_ts" in df_with_soc
+    assert isinstance(df_with_soc["storages_to_calc_soc_ts"], dict)
 
     print(worths["costs"])
     assert (worths["costs"].round(0).values == [-2, -1, 0]).all()

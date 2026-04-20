@@ -70,6 +70,21 @@ result = calculate_storage_worth(
 # result is a dict containing keys 'worth',
 # 'baseline_cashflows' and 'storage_to_calc_cashflows'.
 
+# requesting SOC timeseries output
+soc_result = calculate_storage_worth(
+    baseline_storage=baseline,
+    storage_to_calculate=candidate,
+    eeg_prices=pd.Series([0, 0, 0]),
+    wholesale_market_prices=pd.Series([0, 0, 0]),
+    community_market_prices=pd.Series([0, 0, 0]),
+    supplier_prices=pd.Series([0, 1, 1]),
+    solar_generation=pd.Series([0, 0, 0]),
+    demand=pd.Series([1, 1, 1]),
+    return_soc_timeseries=True,
+    solver="appsi_highs",
+)
+# soc_result contains 'baseline_soc_ts' and 'storage_to_calc_soc_ts'.
+
 # multiple worths (cashflows are available by setting return_cashflows=True)
 storages = [Storage(0, 1, 1, 1), Storage(0, 1, 2, 1)]
 df = calculate_multiple_storage_worth(
