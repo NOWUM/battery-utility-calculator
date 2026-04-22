@@ -1105,3 +1105,22 @@ class EnergyCostCalculator:
         if show:
             fig.show()
         return fig
+
+    def plot_supplier_costs(self, show: bool = True) -> go.Figure:
+        """Plot costs for meeting demand solely from supplier."""
+
+        supplier_price = self.get_price_df()["supplier_prices"].reset_index(drop=True)
+        load = self.demand
+
+        costs = supplier_price * load
+
+        fig = px.line(x=self.original_index, y=costs.values)
+        fig.update_layout(
+            title="Costs for meeting demand solely by supplier",
+            xaxis_title="t",
+            yaxis_title="Costs in €",
+        )
+
+        if show:
+            fig.show()
+        return fig
