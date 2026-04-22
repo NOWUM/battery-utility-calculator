@@ -988,14 +988,17 @@ class EnergyCostCalculator:
             ]
 
         summary_df = pd.DataFrame(rows)
+        summary_df["Label"] = summary_df["Energy (kWh)"].map(lambda v: f"{v:.2f}")
         fig = px.bar(
             summary_df,
             x="Bucket",
             y="Energy (kWh)",
             color="Flow",
+            text="Label",
             barmode="group",
             title="Storage usage summary",
         )
+        fig.update_traces(textposition="outside")
         fig.update_layout(xaxis_title=None, yaxis_title="Energy (kWh)")
         fig.add_annotation(
             xref="paper",
