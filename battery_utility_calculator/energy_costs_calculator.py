@@ -891,6 +891,130 @@ class EnergyCostCalculator:
 
         return charge_df
 
+    def get_storage_usage_kpis(self) -> dict:
+        """Return compact storage usage KPIs aggregated over the full horizon."""
+        if not self.is_optimized:
+            raise ValueError("Model not optimized yet - run optimize() first!")
+
+        energy_flows = self.get_energy_flows()
+        timestep_energy = float(self.hours_per_timestep)
+
+        def col_energy_sum(column: str) -> float:
+            if column not in energy_flows.columns:
+                return 0.0
+            return float(energy_flows[column].sum() * timestep_energy)
+
+        charged_by_source_kwh = {
+            "pv": (
+                col_energy_sum("pv_to_storage_for_home")
+                + col_energy_sum("pv_to_storage_for_eeg")
+                + col_energy_sum("pv_to_storage_for_wholesale")
+                + col_energy_sum("pv_to_storage_for_community")
+            ),
+            "supplier": col_energy_sum("supplier_to_storage"),
+            "wholesale": col_energy_sum("wholesale_to_storage"),
+            "community": col_energy_sum("community_to_storage"),
+        }
+        discharged_by_sink_kwh = {
+            "home": col_energy_sum("storage_to_home"),
+            "eeg": col_energy_sum("storage_to_eeg"),
+            "wholesale": col_energy_sum("storage_to_wholesale"),
+            "community": col_energy_sum("storage_to_community"),
+        }
+
+        charged_kwh_total = float(sum(charged_by_source_kwh.values()))
+        discharged_kwh_total = float(sum(discharged_by_sink_kwh.values()))
+
+        max_discharge_kwh = (
+            float(self.storage.c_rate)
+            * float(self.storage.volume)
+            * timestep_energy
+            * len(self.timesteps)
+        )
+
+        full_cycles_equivalent = (
+            discharged_kwh_total / float(self.storage.volume)
+            if self.storage.volume > 0
+            else 0.0
+        )
+        utilization_ratio = (
+            discharged_kwh_total / max_discharge_kwh if max_discharge_kwh > 0 else 0.0
+        )
+        roundtrip_indicator = (
+            discharged_kwh_total / charged_kwh_total if charged_kwh_total > 0 else 0.0
+        )
+
+        return {
+            "charged_kwh_total": charged_kwh_total,
+            "discharged_kwh_total": discharged_kwh_total,
+            "charged_by_source_kwh": charged_by_source_kwh,
+            "discharged_by_sink_kwh": discharged_by_sink_kwh,
+            "full_cycles_equivalent": float(full_cycles_equivalent),
+            "utilization_ratio": float(utilization_ratio),
+            "roundtrip_indicator": float(roundtrip_indicator),
+        }
+
+    def plot_storage_usage_summary(self, show: bool = True) -> go.Figure:
+        """Plot compact storage usage summary without a time axis."""
+        kpis = self.get_storage_usage_kpis()
+
+        rows = []
+        for source, value in kpis["charged_by_source_kwh"].items():
+            if value > 0:
+                rows.append(
+                    {
+                        "Bucket": f"Charge from {source}",
+                        "Energy (kWh)": value,
+                        "Flow": "Charge",
+                    }
+                )
+        for sink, value in kpis["discharged_by_sink_kwh"].items():
+            if value > 0:
+                rows.append(
+                    {
+                        "Bucket": f"Discharge to {sink}",
+                        "Energy (kWh)": value,
+                        "Flow": "Discharge",
+                    }
+                )
+
+        if not rows:
+            rows = [
+                {
+                    "Bucket": "No storage activity",
+                    "Energy (kWh)": 0.0,
+                    "Flow": "Charge",
+                }
+            ]
+
+        summary_df = pd.DataFrame(rows)
+        fig = px.bar(
+            summary_df,
+            x="Bucket",
+            y="Energy (kWh)",
+            color="Flow",
+            barmode="group",
+            title="Storage usage summary",
+        )
+        fig.update_layout(xaxis_title=None, yaxis_title="Energy (kWh)")
+        fig.add_annotation(
+            xref="paper",
+            yref="paper",
+            x=1,
+            y=1.15,
+            showarrow=False,
+            align="right",
+            text=(
+                f"Cycles: {kpis['full_cycles_equivalent']:.2f}<br>"
+                f"Utilization: {kpis['utilization_ratio']:.1%}<br>"
+                f"Roundtrip indicator: {kpis['roundtrip_indicator']:.2f}"
+            ),
+        )
+
+        if show:
+            fig.show()
+        return fig
+
     def output_results(self, include_cashflows: bool = False):
         """Return convenience timeseries dict with optional cashflow breakdown.
 

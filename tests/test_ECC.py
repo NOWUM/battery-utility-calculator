@@ -394,3 +394,57 @@ def test_calculate_storage_worth_eeg_eligible():
     costs_without_eeg = ecc_without.optimize("appsi_highs")
 
     assert round(costs_without_eeg) == 0
+
+
+def test_storage_usage_kpis_and_summary_plot():
+    calc = EnergyCostCalculator(
+        storage=Storage(id=0, c_rate=1, volume=1),
+        eeg_prices=pd.Series([0, 0, 0], index=idx_3),
+        wholesale_market_prices=pd.Series([0, 0, 0], index=idx_3),
+        community_market_prices=pd.Series([0, 0, 0], index=idx_3),
+        supplier_prices=pd.Series([10, 10, 10], index=idx_3),
+        solar_generation=pd.Series([1, 0, 0], index=idx_3),
+        demand=pd.Series([0, 1, 0], index=idx_3),
+        allow_pv_to_wholesale=False,
+    )
+    calc.optimize(solver="appsi_highs")
+
+    kpis = calc.get_storage_usage_kpis()
+
+    assert np.isclose(
+        sum(kpis["charged_by_source_kwh"].values()), kpis["charged_kwh_total"]
+    )
+    assert np.isclose(
+        sum(kpis["discharged_by_sink_kwh"].values()), kpis["discharged_kwh_total"]
+    )
+    assert np.isclose(kpis["charged_by_source_kwh"]["pv"], 1.0)
+    expected_discharge = (
+        calc.storage.charge_efficiency * calc.storage.discharge_efficiency
+    )
+    assert np.isclose(kpis["discharged_by_sink_kwh"]["home"], expected_discharge)
+    assert np.isclose(kpis["full_cycles_equivalent"], expected_discharge)
+    assert np.isclose(kpis["roundtrip_indicator"], expected_discharge)
+
+    fig = calc.plot_storage_usage_summary(show=False)
+    assert fig is not None
+
+
+def test_storage_usage_kpis_zero_volume_storage():
+    calc = EnergyCostCalculator(
+        storage=Storage(id=0, c_rate=1, volume=0),
+        eeg_prices=pd.Series([0, 0, 0], index=idx_3),
+        wholesale_market_prices=pd.Series([0, 0, 0], index=idx_3),
+        community_market_prices=pd.Series([0, 0, 0], index=idx_3),
+        supplier_prices=pd.Series([1, 1, 1], index=idx_3),
+        solar_generation=pd.Series([0, 0, 0], index=idx_3),
+        demand=pd.Series([1, 1, 1], index=idx_3),
+    )
+    calc.optimize(solver="appsi_highs")
+
+    kpis = calc.get_storage_usage_kpis()
+
+    assert kpis["charged_kwh_total"] == 0
+    assert kpis["discharged_kwh_total"] == 0
+    assert kpis["full_cycles_equivalent"] == 0
+    assert kpis["utilization_ratio"] == 0
+    assert kpis["roundtrip_indicator"] == 0

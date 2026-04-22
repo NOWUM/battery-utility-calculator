@@ -110,5 +110,25 @@ The core optimizer is `EnergyCostCalculator` (in `battery_utility_calculator/ene
 
 Be aware of time-index handling: the optimizer normalizes timeseries indices to integer timesteps while preserving an original `timestamps` copy when `DatetimeIndex` inputs are used; tests commonly use simple integer-index Series.
 
+### Storage usage KPIs (no timeseries plot)
+
+If you want a compact view of how a storage was used after optimization:
+
+```py
+from battery_utility_calculator import EnergyCostCalculator
+
+# ... create calculator with your timeseries and run optimization first
+ecc = EnergyCostCalculator(...)
+ecc.optimize(solver="highs")
+
+kpis = ecc.get_storage_usage_kpis()
+print(kpis["charged_kwh_total"])
+print(kpis["charged_by_source_kwh"])
+print(kpis["discharged_by_sink_kwh"])
+
+# simple aggregate visualization without time axis
+ecc.plot_storage_usage_summary()
+```
+
 ## License
 MIT - see [LICENSE](./LICENSE)
