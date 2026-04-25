@@ -51,6 +51,7 @@ worth = calculate_storage_worth(
     supplier_prices=pd.Series([0, 1, 1]),
     solar_generation=pd.Series([0, 0, 0]),
     demand=pd.Series([1, 1, 1]),
+    cycle_cost_per_kwh=0.05,  # optional degradation cost
     solver="appsi_highs",
 )
 
@@ -96,6 +97,7 @@ df = calculate_multiple_storage_worth(
     supplier_prices=pd.Series([0, 1, 1]),
     solar_generation=pd.Series([0, 0, 0]),
     demand=pd.Series([1, 1, 1]),
+    cycle_cost_per_kwh=0.05,  # optional degradation cost
     solver="appsi_highs",
 )
 
@@ -108,6 +110,27 @@ Notes about the optimizer
 
 The core optimizer is `EnergyCostCalculator` (in `battery_utility_calculator/energy_costs_calculator.py`). It builds a Pyomo `ConcreteModel` with variables like `pv_to_storage[t,use]` and per-use-case storage state-of-charge variables. The objective maximizes summed cashflows (community + supplier + EEG + wholesale). If you need lower-level control or plotting, instantiate `EnergyCostCalculator` directly and call `optimize(solver=...)`.
 
+### Optional cycle-cost parameter
+
+`EnergyCostCalculator`, `calculate_storage_worth`, and `calculate_multiple_storage_worth`
+support `cycle_cost_per_kwh` as an optional degradation cost in EUR per discharged kWh.
+This value is subtracted from the objective proportionally to storage throughput.
+
+Rule-of-thumb range for home storage (LFP, 2026 market snapshots):
+
+- Cost basis: roughly `250-450 EUR/kWh` installed storage capacity
+- Lifetime: roughly `5,000-10,000` full cycles
+- Derived cycle cost range: about `0.025-0.09 EUR/kWh` discharged
+- Typical working value for scenario analysis: `~0.05 EUR/kWh`
+
+Quick derivation:
+
+`cycle_cost_per_kwh = storage_cost_per_kwh / cycle_lifetime`
+
+Example:
+
+`300 EUR/kWh / 6000 cycles = 0.05 EUR/kWh`
+
 Be aware of time-index handling: the optimizer normalizes timeseries indices to integer timesteps while preserving an original `timestamps` copy when `DatetimeIndex` inputs are used; tests commonly use simple integer-index Series.
 
 ### Storage usage KPIs (no timeseries plot)
@@ -118,7 +141,7 @@ If you want a compact view of how a storage was used after optimization:
 from battery_utility_calculator import EnergyCostCalculator
 
 # ... create calculator with your timeseries and run optimization first
-ecc = EnergyCostCalculator(...)
+ecc = EnergyCostCalculator(..., cycle_cost_per_kwh=0.05)
 ecc.optimize(solver="highs")
 
 kpis = ecc.get_storage_usage_kpis()

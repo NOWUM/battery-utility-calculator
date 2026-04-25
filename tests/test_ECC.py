@@ -246,7 +246,7 @@ def test_ECC_discharge_penalty_is_applied():
         demand=pd.Series([1, 1, 1], index=idx_3),
         discharge_penalty_per_kwh=0.0,
     )
-    base_costs = base_calc.optimize(solver="highs")
+    base_costs = base_calc.optimize(solver="appsi_highs")
 
     penalized_calc = EnergyCostCalculator(
         storage=Storage(
@@ -267,6 +267,48 @@ def test_ECC_discharge_penalty_is_applied():
     assert penalized_costs < base_costs
     assert (base_costs - penalized_costs) >= 0.1 * discharged_kwh
     assert np.isclose(penalized_calc.calculate_costs(), penalized_costs)
+
+
+def test_ECC_cycle_cost_per_kwh_is_applied():
+    base_calc = EnergyCostCalculator(
+        storage=Storage(
+            id=0, c_rate=1, volume=1, charge_efficiency=1, discharge_efficiency=1
+        ),
+        eeg_prices=pd.Series([0, 0, 0], index=idx_3),
+        wholesale_market_prices=pd.Series([0, 0, 0], index=idx_3),
+        community_market_prices=pd.Series([0, 0, 0], index=idx_3),
+        supplier_prices=pd.Series([0, 1, 1], index=idx_3),
+        solar_generation=pd.Series([0, 0, 0], index=idx_3),
+        demand=pd.Series([1, 1, 1], index=idx_3),
+        cycle_cost_per_kwh=0.0,
+    )
+    base_costs = base_calc.optimize(solver="appsi_highs")
+
+    cycle_cost_calc = EnergyCostCalculator(
+        storage=Storage(
+            id=0, c_rate=1, volume=1, charge_efficiency=1, discharge_efficiency=1
+        ),
+        eeg_prices=pd.Series([0, 0, 0], index=idx_3),
+        wholesale_market_prices=pd.Series([0, 0, 0], index=idx_3),
+        community_market_prices=pd.Series([0, 0, 0], index=idx_3),
+        supplier_prices=pd.Series([0, 1, 1], index=idx_3),
+        solar_generation=pd.Series([0, 0, 0], index=idx_3),
+        demand=pd.Series([1, 1, 1], index=idx_3),
+        cycle_cost_per_kwh=0.05,
+    )
+    cycle_costs = cycle_cost_calc.optimize(solver="appsi_highs")
+
+    flows = cycle_cost_calc.get_energy_flows()
+    discharged_kwh = float(flows["storage_to_home"].sum())
+    expected_delta = 0.05 * discharged_kwh
+    assert cycle_costs < base_costs
+    assert (base_costs - cycle_costs) >= expected_delta
+    assert np.isclose(
+        cycle_cost_calc.calculate_cycle_cost_penalty(use_values=True),
+        expected_delta,
+        atol=1e-6,
+    )
+    assert np.isclose(cycle_cost_calc.calculate_costs(), cycle_costs)
 
 
 def test_ECC_hours_per_timestep():

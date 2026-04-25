@@ -41,6 +41,7 @@ class EnergyCostCalculator:
         eeg_eligible: bool = True,
         goal: str = "max_cashflow",
         discharge_penalty_per_kwh: float = 1e-6,
+        cycle_cost_per_kwh: float = 0.0,
     ):
         """Optimizer for prosumer energy management, calculating minimum costs to cover energy demand.
 
@@ -55,6 +56,8 @@ class EnergyCostCalculator:
             hours_per_timestep (int | float): Hours per timesteps, e. g. 0.25 equals quarter hour.
             storage_use_cases (list[str]): The use cases for energy storage. Allowed values are "eeg", "wholesale", "community", "home"
             wholesale_fee (float): Percentage of earned wholesale money that has to be given away (0.0 to 1.0). Default is 0.3.
+            cycle_cost_per_kwh (float): Optional degradation cost per discharged kWh in EUR.
+                The value is subtracted from cashflow proportionally to total discharge throughput.
         """
 
         if storage:
@@ -90,6 +93,7 @@ class EnergyCostCalculator:
         self.eeg_eligible = eeg_eligible
         self.goal = goal
         self.discharge_penalty_per_kwh = discharge_penalty_per_kwh
+        self.cycle_cost_per_kwh = cycle_cost_per_kwh
 
         if not self.eeg_eligible:
             self.eeg_prices = self.eeg_prices * 0
@@ -526,10 +530,16 @@ class EnergyCostCalculator:
         eeg_cf = cashflows["eeg"]
         wholesale_cf = cashflows["wholesale"]
         discharge_penalty = self.calculate_discharge_penalty(use_values=False)
+        cycle_cost_penalty = self.calculate_cycle_cost_penalty(use_values=False)
 
         # maximize sum of cashflows
         self.model.objective = pyo.Objective(
-            expr=community_cf + supplier_cf + eeg_cf + wholesale_cf - discharge_penalty,
+            expr=community_cf
+            + supplier_cf
+            + eeg_cf
+            + wholesale_cf
+            - discharge_penalty
+            - cycle_cost_penalty,
             sense=pyo.maximize,
         )
 
@@ -636,6 +646,16 @@ class EnergyCostCalculator:
             self.discharge_penalty_per_kwh * total_discharge * self.hours_per_timestep
         )
 
+    def calculate_cycle_cost_penalty(self, use_values=False):
+        total_discharge = sum(
+            self._get_value(self.model.storage_to_eeg[timestep], use_values)
+            + self._get_value(self.model.storage_to_wholesale[timestep], use_values)
+            + self._get_value(self.model.storage_to_community[timestep], use_values)
+            + self._get_value(self.model.storage_to_home[timestep], use_values)
+            for timestep in self.timesteps
+        )
+        return self.cycle_cost_per_kwh * total_discharge * self.hours_per_timestep
+
     def set_max_green_energy_objective(self):
         """Set objective to maximize PV self-consumption.
 
@@ -693,6 +713,7 @@ class EnergyCostCalculator:
         )
         if self.goal == "max_cashflow":
             total -= self.calculate_discharge_penalty(use_values=True)
+            total -= self.calculate_cycle_cost_penalty(use_values=True)
         return float(total)
 
     # ------------------------------------------------------------------

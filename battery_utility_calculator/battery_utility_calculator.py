@@ -34,6 +34,7 @@ def calculate_storage_worth(
     return_cashflows: bool = False,
     eeg_eligible: bool = True,
     discharge_penalty_per_kwh: float = 1e-6,
+    cycle_cost_per_kwh: float = 0.0,
     solver: str = "gurobi",
 ) -> dict | float:
     """Calculates the worth (value) of a single storage (compared to a baseline storage).
@@ -59,6 +60,8 @@ def calculate_storage_worth(
             Default is False.
         return_cashflows (bool, optional): If True, returns cashflow breakdown for baseline and
             candidate storage. Default is False.
+        cycle_cost_per_kwh (float, optional): Optional degradation cost in EUR per
+            discharged kWh. Default is 0.0.
         solver (str, optional): Which solver to use. Defaults to "gurobi".
 
     Returns:
@@ -85,6 +88,7 @@ def calculate_storage_worth(
         allow_storage_to_wholesale=allow_storage_to_wholesale,
         eeg_eligible=eeg_eligible,
         discharge_penalty_per_kwh=discharge_penalty_per_kwh,
+        cycle_cost_per_kwh=cycle_cost_per_kwh,
     )
     baseline_costs = baseline_ecc.optimize(solver=solver)
 
@@ -106,6 +110,7 @@ def calculate_storage_worth(
         allow_storage_to_wholesale=allow_storage_to_wholesale,
         eeg_eligible=eeg_eligible,
         discharge_penalty_per_kwh=discharge_penalty_per_kwh,
+        cycle_cost_per_kwh=cycle_cost_per_kwh,
     )
     to_calc_costs = to_calc_ecc.optimize(solver=solver)
 
@@ -154,6 +159,7 @@ def calculate_multiple_storage_worth(
     return_cashflows: bool = False,
     eeg_eligible: bool = False,
     discharge_penalty_per_kwh: float = 1e-6,
+    cycle_cost_per_kwh: float = 0.0,
     solver: str = "gurobi",
     *args,
     **kwargs,
@@ -177,6 +183,8 @@ def calculate_multiple_storage_worth(
         return_charge_timeseries (bool, optional): If True, returns dict with charge timeseries data. Defaults to False.
         return_soc_timeseries (bool, optional): If True, returns dict with SOC timeseries data. Defaults to False.
         return_cashflows (bool, optional): If True, returns dict with cashflow results for each storage. Defaults to False.
+        cycle_cost_per_kwh (float, optional): Optional degradation cost in EUR per
+            discharged kWh. Default is 0.0.
         check_timeseries (bool, optional): Wether to check time series. Defaults to True.
         solver (str, optional): Which solver to use. Defaults to "gurobi".
 
@@ -217,6 +225,7 @@ def calculate_multiple_storage_worth(
         wholesale_fee=wholesale_fee,
         eeg_eligible=eeg_eligible,
         discharge_penalty_per_kwh=discharge_penalty_per_kwh,
+        cycle_cost_per_kwh=cycle_cost_per_kwh,
         *args,
         **kwargs,
     )
@@ -275,6 +284,7 @@ def calculate_multiple_storage_worth(
             wholesale_market_prices=wholesale_market_prices,
             eeg_eligible=eeg_eligible,
             discharge_penalty_per_kwh=discharge_penalty_per_kwh,
+            cycle_cost_per_kwh=cycle_cost_per_kwh,
             *args,
             **kwargs,
         )

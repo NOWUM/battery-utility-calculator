@@ -73,6 +73,50 @@ def test_calculate_storage_worth():
     assert "baseline_soc_ts" in soc_result and "storage_to_calc_soc_ts" in soc_result
 
 
+def test_calculate_storage_worth_cycle_cost_default_compatibility():
+    baseline_storage = Storage(0, 1, 0, 1)
+    storage_to_calc = Storage(0, 1, 1, 1)
+
+    worth_default = calculate_storage_worth(
+        baseline_storage=baseline_storage,
+        storage_to_calculate=storage_to_calc,
+        eeg_prices=pd.Series([0, 0, 0], index=idx),
+        wholesale_market_prices=pd.Series([0, 0, 0], index=idx),
+        community_market_prices=pd.Series([0, 0, 0], index=idx),
+        supplier_prices=pd.Series([0, 1, 1], index=idx),
+        solar_generation=pd.Series([0, 0, 0], index=idx),
+        demand=pd.Series([1, 1, 1], index=idx),
+        solver="appsi_highs",
+    )
+    worth_explicit_zero = calculate_storage_worth(
+        baseline_storage=baseline_storage,
+        storage_to_calculate=storage_to_calc,
+        eeg_prices=pd.Series([0, 0, 0], index=idx),
+        wholesale_market_prices=pd.Series([0, 0, 0], index=idx),
+        community_market_prices=pd.Series([0, 0, 0], index=idx),
+        supplier_prices=pd.Series([0, 1, 1], index=idx),
+        solar_generation=pd.Series([0, 0, 0], index=idx),
+        demand=pd.Series([1, 1, 1], index=idx),
+        cycle_cost_per_kwh=0.0,
+        solver="appsi_highs",
+    )
+    worth_with_cycle_cost = calculate_storage_worth(
+        baseline_storage=baseline_storage,
+        storage_to_calculate=storage_to_calc,
+        eeg_prices=pd.Series([0, 0, 0], index=idx),
+        wholesale_market_prices=pd.Series([0, 0, 0], index=idx),
+        community_market_prices=pd.Series([0, 0, 0], index=idx),
+        supplier_prices=pd.Series([0, 1, 1], index=idx),
+        solar_generation=pd.Series([0, 0, 0], index=idx),
+        demand=pd.Series([1, 1, 1], index=idx),
+        cycle_cost_per_kwh=0.05,
+        solver="appsi_highs",
+    )
+
+    assert round(worth_default, 6) == round(worth_explicit_zero, 6)
+    assert worth_with_cycle_cost < worth_default
+
+
 def test_calculate_multiple_storage_worth():
     baseline_storage = Storage(0, 1, 0, 1)
     storages_to_calc = [Storage(0, 1, 1, 1), Storage(1, 1, 2, 1)]
@@ -129,6 +173,47 @@ def test_calculate_multiple_storage_worth():
     print(worths["costs"])
     assert (worths["costs"].round(0).values == [-2, -1, 0]).all()
     assert (worths["worth"].round(0).values[1:] == [1, 2]).all()
+
+
+def test_calculate_multiple_storage_worth_cycle_cost_is_consistent():
+    baseline_storage = Storage(0, 1, 0, 1)
+    storages_to_calc = [Storage(0, 1, 1, 1), Storage(1, 1, 2, 1)]
+
+    without_cycle_cost = calculate_multiple_storage_worth(
+        baseline_storage=baseline_storage,
+        storages_to_calculate=storages_to_calc,
+        eeg_prices=pd.Series([0, 0, 0], index=idx),
+        wholesale_market_prices=pd.Series([0, 0, 0], index=idx),
+        community_market_prices=pd.Series([0, 0, 0], index=idx),
+        supplier_prices=pd.Series([0, 1, 1], index=idx),
+        solar_generation=pd.Series([0, 0, 0], index=idx),
+        demand=pd.Series([1, 1, 1], index=idx),
+        cycle_cost_per_kwh=0.0,
+        solver="appsi_highs",
+    )
+    with_cycle_cost = calculate_multiple_storage_worth(
+        baseline_storage=baseline_storage,
+        storages_to_calculate=storages_to_calc,
+        eeg_prices=pd.Series([0, 0, 0], index=idx),
+        wholesale_market_prices=pd.Series([0, 0, 0], index=idx),
+        community_market_prices=pd.Series([0, 0, 0], index=idx),
+        supplier_prices=pd.Series([0, 1, 1], index=idx),
+        solar_generation=pd.Series([0, 0, 0], index=idx),
+        demand=pd.Series([1, 1, 1], index=idx),
+        cycle_cost_per_kwh=0.05,
+        solver="appsi_highs",
+    )
+
+    # baseline row worth should always be zero
+    assert float(without_cycle_cost.loc[0, "worth"]) == 0.0
+    assert float(with_cycle_cost.loc[0, "worth"]) == 0.0
+    # added cycle cost should lower worth of storage configurations
+    assert float(with_cycle_cost.loc[1, "worth"]) < float(
+        without_cycle_cost.loc[1, "worth"]
+    )
+    assert float(with_cycle_cost.loc[2, "worth"]) < float(
+        without_cycle_cost.loc[2, "worth"]
+    )
 
 
 def test_calc_bid_curve_dtypes():
