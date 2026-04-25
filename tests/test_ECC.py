@@ -167,7 +167,7 @@ def test_ECC_wholesale():
         wholesale_fee=0.5,
     )
     costs = ecc.optimize(solver="highs")
-    assert round(costs, 1) == 2.5
+    assert np.isclose(costs, 2.449999, atol=1e-6)
 
     # same as above, but volume of 2, so should be able to do two times for total gain of 4
     # no fee, so 100% of profit goes to customer
@@ -215,7 +215,7 @@ def test_ECC_charge_discharge_eff():
         demand=pd.Series([1, 1, 1], index=idx_3),
     )
     costs = calculator.optimize(solver="highs")
-    assert costs == -1.5
+    assert np.isclose(costs, -1.5000005, atol=1e-6)
 
     # combine those two for total costs of 1.75
     calculator = EnergyCostCalculator(
@@ -231,6 +231,42 @@ def test_ECC_charge_discharge_eff():
     )
     costs = calculator.optimize(solver="highs")
     assert round(costs, 2) == -1.75
+
+
+def test_ECC_discharge_penalty_is_applied():
+    base_calc = EnergyCostCalculator(
+        storage=Storage(
+            id=0, c_rate=1, volume=1, charge_efficiency=1, discharge_efficiency=1
+        ),
+        eeg_prices=pd.Series([0, 0, 0], index=idx_3),
+        wholesale_market_prices=pd.Series([0, 0, 0], index=idx_3),
+        community_market_prices=pd.Series([0, 0, 0], index=idx_3),
+        supplier_prices=pd.Series([0, 1, 1], index=idx_3),
+        solar_generation=pd.Series([0, 0, 0], index=idx_3),
+        demand=pd.Series([1, 1, 1], index=idx_3),
+        discharge_penalty_per_kwh=0.0,
+    )
+    base_costs = base_calc.optimize(solver="highs")
+
+    penalized_calc = EnergyCostCalculator(
+        storage=Storage(
+            id=0, c_rate=1, volume=1, charge_efficiency=1, discharge_efficiency=1
+        ),
+        eeg_prices=pd.Series([0, 0, 0], index=idx_3),
+        wholesale_market_prices=pd.Series([0, 0, 0], index=idx_3),
+        community_market_prices=pd.Series([0, 0, 0], index=idx_3),
+        supplier_prices=pd.Series([0, 1, 1], index=idx_3),
+        solar_generation=pd.Series([0, 0, 0], index=idx_3),
+        demand=pd.Series([1, 1, 1], index=idx_3),
+        discharge_penalty_per_kwh=0.1,
+    )
+    penalized_costs = penalized_calc.optimize(solver="highs")
+
+    flows = penalized_calc.get_energy_flows()
+    discharged_kwh = float(flows["storage_to_home"].sum())
+    assert penalized_costs < base_costs
+    assert (base_costs - penalized_costs) >= 0.1 * discharged_kwh
+    assert np.isclose(penalized_calc.calculate_costs(), penalized_costs)
 
 
 def test_ECC_hours_per_timestep():

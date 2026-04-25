@@ -40,6 +40,7 @@ class EnergyCostCalculator:
         wholesale_fee: float = 0.3,
         eeg_eligible: bool = True,
         goal: str = "max_cashflow",
+        discharge_penalty_per_kwh: float = 1e-6,
     ):
         """Optimizer for prosumer energy management, calculating minimum costs to cover energy demand.
 
@@ -88,6 +89,7 @@ class EnergyCostCalculator:
         self.wholesale_fee = wholesale_fee
         self.eeg_eligible = eeg_eligible
         self.goal = goal
+        self.discharge_penalty_per_kwh = discharge_penalty_per_kwh
 
         if not self.eeg_eligible:
             self.eeg_prices = self.eeg_prices * 0
@@ -523,10 +525,12 @@ class EnergyCostCalculator:
         supplier_cf = cashflows["supplier"]
         eeg_cf = cashflows["eeg"]
         wholesale_cf = cashflows["wholesale"]
+        discharge_penalty = self.calculate_discharge_penalty(use_values=False)
 
         # maximize sum of cashflows
         self.model.objective = pyo.Objective(
-            expr=community_cf + supplier_cf + eeg_cf + wholesale_cf, sense=pyo.maximize
+            expr=community_cf + supplier_cf + eeg_cf + wholesale_cf - discharge_penalty,
+            sense=pyo.maximize,
         )
 
         log.info("Model objective set up successfully.")
@@ -620,6 +624,18 @@ class EnergyCostCalculator:
         )
         return (wholesale_earnings - wholesale_costs) * (1 - self.wholesale_fee)
 
+    def calculate_discharge_penalty(self, use_values=False):
+        total_discharge = sum(
+            self._get_value(self.model.storage_to_eeg[timestep], use_values)
+            + self._get_value(self.model.storage_to_wholesale[timestep], use_values)
+            + self._get_value(self.model.storage_to_community[timestep], use_values)
+            + self._get_value(self.model.storage_to_home[timestep], use_values)
+            for timestep in self.timesteps
+        )
+        return (
+            self.discharge_penalty_per_kwh * total_discharge * self.hours_per_timestep
+        )
+
     def set_max_green_energy_objective(self):
         """Set objective to maximize PV self-consumption.
 
@@ -661,8 +677,8 @@ class EnergyCostCalculator:
         """Calculate monetary cashflow from the optimized model and return it.
 
         Returns the same cashflow expression that `set_max_cashflow_objective`
-        maximizes. Requires the model to be optimized first (raises ValueError
-        otherwise).
+        maximizes (including discharge penalty for ``goal="max_cashflow"``).
+        Requires the model to be optimized first (raises ValueError otherwise).
         """
         if not self.is_optimized:
             raise ValueError("Model not optimized yet - run optimize() first!")
@@ -675,6 +691,8 @@ class EnergyCostCalculator:
             + cashflows["eeg"]
             + cashflows["wholesale"]
         )
+        if self.goal == "max_cashflow":
+            total -= self.calculate_discharge_penalty(use_values=True)
         return float(total)
 
     # ------------------------------------------------------------------
