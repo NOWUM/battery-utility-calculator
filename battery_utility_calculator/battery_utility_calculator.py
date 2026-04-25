@@ -5,7 +5,9 @@
 from typing import Literal
 
 import pandas as pd
+import plotly.express as px
 from pandas.api.types import is_numeric_dtype
+from plotly.graph_objects import Figure
 
 from battery_utility_calculator import EnergyCostCalculator as ECC
 from battery_utility_calculator import Storage
@@ -380,3 +382,102 @@ def calculate_bidding_curve(
     return df[
         ["volume", "cumulative_volume", "marginal_price", "marginal_price_per_kwh"]
     ]
+
+
+_CASHFLOW_COMPONENT_ORDER = ("community", "supplier", "eeg", "wholesale")
+
+
+def plot_multiple_storage_worth_cashflows(
+    results: dict,
+    *,
+    stacked: bool = True,
+    show: bool = True,
+    title: str | None = None,
+) -> Figure:
+    """Plot cashflow components from :func:`calculate_multiple_storage_worth` with ``return_cashflows=True``.
+
+    Expects ``results`` to contain ``baseline_cashflows``, ``storages_to_calc_cashflows``,
+    and ``results_df`` (the same keys returned by that function).
+
+    Args:
+        results: Output dict of ``calculate_multiple_storage_worth(..., return_cashflows=True)``.
+        stacked: If True, stacked bars per scenario; otherwise grouped bars by component.
+        show: If True, call ``show()`` on the figure (Plotly).
+        title: Optional plot title; a default is used if omitted.
+
+    Returns:
+        Plotly figure (stacked or grouped bar chart, EUR by market component).
+
+    Raises:
+        ValueError: If required keys are missing or cashflow dicts have unexpected keys.
+    """
+    required = ("baseline_cashflows", "storages_to_calc_cashflows", "results_df")
+    missing = [k for k in required if k not in results]
+    if missing:
+        msg = "results must contain keys from calculate_multiple_storage_worth(..., return_cashflows=True); "
+        msg += f"missing: {', '.join(missing)}"
+        raise ValueError(msg)
+
+    baseline_cf: dict = results["baseline_cashflows"]
+    stor_cf: dict = results["storages_to_calc_cashflows"]
+    results_df: pd.DataFrame = results["results_df"]
+
+    _validate_cashflow_dict(baseline_cf, "baseline_cashflows")
+    for sid, cf in stor_cf.items():
+        _validate_cashflow_dict(cf, f"storages_to_calc_cashflows[{sid!r}]")
+
+    rows: list[dict] = []
+    rows.extend(
+        {"scenario": "Baseline", "component": comp, "EUR": float(baseline_cf[comp])}
+        for comp in _CASHFLOW_COMPONENT_ORDER
+    )
+
+    for _, row in results_df.iloc[1:].iterrows():
+        sid = row["id"]
+        if sid not in stor_cf:
+            msg = (
+                f"results_df storage id {sid!r} not found in storages_to_calc_cashflows"
+            )
+            raise ValueError(msg)
+        vol = row.get("volume")
+        if vol is not None and pd.notna(vol):
+            scen = f"id={sid}, vol={float(vol)} kWh"
+        else:
+            scen = f"id={sid}"
+        cf = stor_cf[sid]
+        rows.extend(
+            {"scenario": scen, "component": comp, "EUR": float(cf[comp])}
+            for comp in _CASHFLOW_COMPONENT_ORDER
+        )
+
+    long = pd.DataFrame(rows)
+    long["component"] = pd.Categorical(
+        long["component"],
+        categories=list(_CASHFLOW_COMPONENT_ORDER),
+        ordered=True,
+    )
+
+    fig_title = title if title is not None else "Cashflows by scenario (EUR)"
+    barmode = "stack" if stacked else "group"
+    fig = px.bar(
+        long,
+        x="scenario",
+        y="EUR",
+        color="component",
+        title=fig_title,
+        barmode=barmode,
+        category_orders={"component": list(_CASHFLOW_COMPONENT_ORDER)},
+    )
+    fig.update_layout(xaxis_title=None, legend_title_text="Market")
+    fig.update_xaxes(tickangle=-25)
+
+    if show:
+        fig.show()
+    return fig
+
+
+def _validate_cashflow_dict(cf: dict, label: str) -> None:
+    expected = set(_CASHFLOW_COMPONENT_ORDER)
+    if set(cf.keys()) != expected:
+        msg = f"{label} must have keys {sorted(expected)}, got {sorted(cf.keys())}"
+        raise ValueError(msg)

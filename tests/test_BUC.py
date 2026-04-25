@@ -3,12 +3,14 @@
 # SPDX-License-Identifier: MIT
 
 import pandas as pd
+import pytest
 
 from battery_utility_calculator.battery_utility_calculator import (
     Storage,
     calculate_bidding_curve,
     calculate_multiple_storage_worth,
     calculate_storage_worth,
+    plot_multiple_storage_worth_cashflows,
 )
 
 idx = pd.date_range("2025-01-01", freq="h", periods=3)
@@ -102,6 +104,12 @@ def test_calculate_multiple_storage_worth():
     )
     assert "baseline_cashflows" in df_with_cf
     assert isinstance(df_with_cf["storages_to_calc_cashflows"], dict)
+
+    fig = plot_multiple_storage_worth_cashflows(df_with_cf, show=False, stacked=False)
+    assert len(fig.data) == 4
+
+    with pytest.raises(ValueError, match="missing"):
+        plot_multiple_storage_worth_cashflows({"results_df": df_with_cf["results_df"]})
 
     df_with_soc = calculate_multiple_storage_worth(
         baseline_storage=baseline_storage,
