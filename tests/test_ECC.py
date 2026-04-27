@@ -36,6 +36,7 @@ def test_ECC_baseline():
         "supplier": -3.0,
         "eeg": 0.0,
         "wholesale": 0.0,
+        "grid_fees": 0.0,
     }
 
 
@@ -526,3 +527,109 @@ def test_storage_usage_kpis_zero_volume_storage():
     assert kpis["full_cycles_equivalent"] == 0
     assert kpis["utilization_ratio"] == 0
     assert kpis["roundtrip_indicator"] == 0
+
+
+def test_ECC_grid_fees_reduce_non_wholesale_cashflow():
+    base_calc = EnergyCostCalculator(
+        storage=Storage(id=0, c_rate=1, volume=1),
+        eeg_prices=pd.Series([0, 2, 0], index=idx_3),
+        wholesale_market_prices=pd.Series([0, 0, 0], index=idx_3),
+        community_market_prices=pd.Series([0, 0, 0], index=idx_3),
+        supplier_prices=pd.Series([0, 1, 1], index=idx_3),
+        solar_generation=pd.Series([1, 0, 0], index=idx_3),
+        demand=pd.Series([0, 0, 0], index=idx_3),
+        allow_pv_to_wholesale=False,
+        grid_zone="local",
+    )
+    base_costs = base_calc.optimize(solver="appsi_highs")
+
+    fee_calc = EnergyCostCalculator(
+        storage=Storage(
+            id=0, c_rate=1, volume=1, charge_efficiency=1, discharge_efficiency=1
+        ),
+        eeg_prices=pd.Series([0, 0, 0], index=idx_3),
+        wholesale_market_prices=pd.Series([0, 0, 0], index=idx_3),
+        community_market_prices=pd.Series([0, 0, 0], index=idx_3),
+        supplier_prices=pd.Series([1, 1, 1], index=idx_3),
+        solar_generation=pd.Series([1, 0, 0], index=idx_3),
+        demand=pd.Series([0, 0, 1], index=idx_3),
+        allow_pv_to_wholesale=False,
+        grid_zone="high_voltage",
+        grid_fee_by_zone={
+            "local": 0.0,
+            "medium_voltage": 0.0,
+            "high_voltage": 0.05,
+            "extra_high_voltage": 0.0,
+        },
+    )
+    fee_costs = fee_calc.optimize(solver="appsi_highs")
+    fee_cashflows = fee_calc.get_cashflows()
+
+    assert fee_costs < base_costs
+    assert fee_cashflows["grid_fees"] == -0.1
+
+
+def test_ECC_grid_fees_do_not_affect_wholesale_only_operations():
+    kwargs = dict(
+        storage=Storage(id=0, c_rate=1, volume=1),
+        demand=pd.Series([0, 0, 0, 0], index=idx_4),
+        solar_generation=pd.Series([0, 0, 0, 0], index=idx_4),
+        supplier_prices=pd.Series([10, 10, 10, 10], index=idx_4),
+        eeg_prices=pd.Series([0, 0, 0, 0], index=idx_4),
+        community_market_prices=pd.Series([0, 0, 0, 0], index=idx_4),
+        wholesale_market_prices=pd.Series([0, 0, 5, 5], index=idx_4),
+        wholesale_fee=0.0,
+    )
+
+    no_fee = EnergyCostCalculator(
+        **kwargs,
+        grid_zone="local",
+        grid_fee_by_zone={"local": 0.0},
+    )
+    with_fee = EnergyCostCalculator(
+        **kwargs,
+        grid_zone="extra_high_voltage",
+        grid_fee_by_zone={
+            "local": 0.0,
+            "extra_high_voltage": 5,
+        },
+    )
+
+    no_fee_costs = no_fee.optimize(solver="appsi_highs")
+    with_fee_costs = with_fee.optimize(solver="appsi_highs")
+
+    assert np.isclose(no_fee_costs, with_fee_costs)
+    assert np.isclose(with_fee.get_cashflows()["grid_fees"], 0.0)
+
+
+def test_ECC_grid_zone_ordering_changes_costs():
+    fee_map = {
+        "local": 0.0,
+        "medium_voltage": 0.1,
+        "high_voltage": 0.2,
+        "extra_high_voltage": 0.3,
+    }
+    costs_by_zone = {}
+
+    for zone in [
+        "local",
+        "medium_voltage",
+        "high_voltage",
+        "extra_high_voltage",
+    ]:
+        calc = EnergyCostCalculator(
+            storage=Storage(id=0, c_rate=1, volume=1),
+            eeg_prices=pd.Series([0, 0, 0], index=idx_3),
+            wholesale_market_prices=pd.Series([0, 0, 0], index=idx_3),
+            community_market_prices=pd.Series([0, 0, 0], index=idx_3),
+            supplier_prices=pd.Series([0, 1, 1], index=idx_3),
+            solar_generation=pd.Series([0, 0, 0], index=idx_3),
+            demand=pd.Series([1, 1, 1], index=idx_3),
+            grid_zone=zone,
+            grid_fee_by_zone=fee_map,
+        )
+        costs_by_zone[zone] = calc.optimize(solver="appsi_highs")
+
+    assert costs_by_zone["local"] > costs_by_zone["medium_voltage"]
+    assert costs_by_zone["medium_voltage"] > costs_by_zone["high_voltage"]
+    assert costs_by_zone["high_voltage"] > costs_by_zone["extra_high_voltage"]

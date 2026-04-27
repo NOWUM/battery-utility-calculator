@@ -15,6 +15,12 @@ log = logging.getLogger("battery_utility")
 log.setLevel(logging.WARNING)
 
 epsilon = 1e-4
+DEFAULT_GRID_FEE_BY_ZONE = {
+    "local": 0.0,
+    "medium_voltage": 0.01,
+    "high_voltage": 0.02,
+    "extra_high_voltage": 0.03,
+}
 
 
 class EnergyCostCalculator:
@@ -38,6 +44,8 @@ class EnergyCostCalculator:
         allow_wholesale_to_storage: bool = True,
         allow_storage_to_wholesale: bool = True,
         wholesale_fee: float = 0.3,
+        grid_zone: str = "local",
+        grid_fee_by_zone: dict[str, float] | None = None,
         eeg_eligible: bool = True,
         goal: str = "max_cashflow",
         discharge_penalty_per_kwh: float = 1e-6,
@@ -56,8 +64,12 @@ class EnergyCostCalculator:
             hours_per_timestep (int | float): Hours per timesteps, e. g. 0.25 equals quarter hour.
             storage_use_cases (list[str]): The use cases for energy storage. Allowed values are "eeg", "wholesale", "community", "home"
             wholesale_fee (float): Percentage of earned wholesale money that has to be given away (0.0 to 1.0). Default is 0.3.
+            grid_zone (str): The grid zone for the optimization. Allowed values are "local", "medium_voltage", "high_voltage", "extra_high_voltage". Default is "local".
+            grid_fee_by_zone (dict[str, float]): The grid fees for each grid zone. Default is DEFAULT_GRID_FEE_BY_ZONE.
+            eeg_eligible (bool): Whether the storage is eligible for EEG. Default is True.
+            goal (str): The goal of the optimization. Allowed values are "max_cashflow" and "max_green_energy". Default is "max_cashflow".
+            discharge_penalty_per_kwh (float): The discharge penalty per kWh in EUR. Default is 1e-6.
             cycle_cost_per_kwh (float): Optional degradation cost per discharged kWh in EUR.
-                The value is subtracted from cashflow proportionally to total discharge throughput.
         """
 
         if storage:
@@ -90,6 +102,9 @@ class EnergyCostCalculator:
         self.allow_storage_to_community = allow_storage_to_community
         self.allow_community_to_storage = allow_community_to_storage
         self.wholesale_fee = wholesale_fee
+        self.grid_zone = self._normalize_grid_zone(grid_zone)
+        self.grid_fee_by_zone = self._prepare_grid_fee_by_zone(grid_fee_by_zone)
+        self.grid_fee_per_kwh = float(self.grid_fee_by_zone[self.grid_zone])
         self.eeg_eligible = eeg_eligible
         self.goal = goal
         self.discharge_penalty_per_kwh = discharge_penalty_per_kwh
@@ -111,6 +126,30 @@ class EnergyCostCalculator:
             self.set_max_cashflow_objective()
         elif self.goal == "max_green_energy":
             self.set_max_green_energy_objective()
+
+    def _normalize_grid_zone(self, grid_zone: str) -> str:
+        if not isinstance(grid_zone, str):
+            raise TypeError("grid_zone has to be a string.")
+        normalized = grid_zone.strip().lower()
+        if normalized not in DEFAULT_GRID_FEE_BY_ZONE:
+            msg = f"Unknown grid_zone '{grid_zone}'. Allowed values: {sorted(DEFAULT_GRID_FEE_BY_ZONE.keys())}"
+            raise ValueError(msg)
+        return normalized
+
+    def _prepare_grid_fee_by_zone(
+        self,
+        grid_fee_by_zone: dict[str, float] | None,
+    ) -> dict[str, float]:
+        fees = DEFAULT_GRID_FEE_BY_ZONE.copy()
+        if grid_fee_by_zone is None:
+            return fees
+        if not isinstance(grid_fee_by_zone, dict):
+            raise TypeError("grid_fee_by_zone has to be a dict[str, float] or None.")
+
+        for key, value in grid_fee_by_zone.items():
+            normalized_key = self._normalize_grid_zone(key)
+            fees[normalized_key] = float(value)
+        return fees
 
     def __check_prepare_timeseries_indices__(self) -> None:
         """Check if all timeseries indices are valid."""
@@ -529,6 +568,7 @@ class EnergyCostCalculator:
         supplier_cf = cashflows["supplier"]
         eeg_cf = cashflows["eeg"]
         wholesale_cf = cashflows["wholesale"]
+        grid_fee_cf = cashflows["grid_fees"]
         discharge_penalty = self.calculate_discharge_penalty(use_values=False)
         cycle_cost_penalty = self.calculate_cycle_cost_penalty(use_values=False)
 
@@ -538,6 +578,7 @@ class EnergyCostCalculator:
             + supplier_cf
             + eeg_cf
             + wholesale_cf
+            + grid_fee_cf
             - discharge_penalty
             - cycle_cost_penalty,
             sense=pyo.maximize,
@@ -557,12 +598,14 @@ class EnergyCostCalculator:
 
         # wholesale cashflow
         wholesale_cf = self.calculate_wholesale_cashflow(use_values=use_values)
+        grid_fee_cf = self.calculate_grid_fee_cashflow(use_values=use_values)
 
         return {
             "community": community_cf,
             "supplier": supplier_cf,
             "eeg": eeg_cf,
             "wholesale": wholesale_cf,
+            "grid_fees": grid_fee_cf,
         }
 
     def calculate_community_cashflow(self, use_values=False):
@@ -634,6 +677,31 @@ class EnergyCostCalculator:
         )
         return (wholesale_earnings - wholesale_costs) * (1 - self.wholesale_fee)
 
+    def calculate_grid_fee_cashflow(self, use_values=False):
+        if self.grid_fee_per_kwh <= 0:
+            return 0.0
+
+        charge_flows = sum(
+            self._get_value(self.model.pv_to_storage[timestep, use], use_values)
+            for timestep in self.timesteps
+            for use in self.storage_use_cases
+            if use != "wholesale"
+        ) + sum(
+            self._get_value(self.model.supplier_to_storage[timestep], use_values)
+            + self._get_value(self.model.community_to_storage[timestep], use_values)
+            for timestep in self.timesteps
+        )
+
+        discharge_flows = sum(
+            self._get_value(self.model.storage_to_eeg[timestep], use_values)
+            + self._get_value(self.model.storage_to_community[timestep], use_values)
+            + self._get_value(self.model.storage_to_home[timestep], use_values)
+            for timestep in self.timesteps
+        )
+
+        total_fee_energy = (charge_flows + discharge_flows) * self.hours_per_timestep
+        return -self.grid_fee_per_kwh * total_fee_energy
+
     def calculate_discharge_penalty(self, use_values=False):
         total_discharge = sum(
             self._get_value(self.model.storage_to_eeg[timestep], use_values)
@@ -685,7 +753,10 @@ class EnergyCostCalculator:
         community_cf = cashflows["community"]
         supplier_cf = cashflows["supplier"]
         wholesale_cf = cashflows["wholesale"]
-        total_cashflow = eeg_cf + supplier_cf + community_cf + wholesale_cf
+        grid_fee_cf = cashflows["grid_fees"]
+        total_cashflow = (
+            eeg_cf + supplier_cf + community_cf + wholesale_cf + grid_fee_cf
+        )
 
         expr = expr + epsilon * total_cashflow
 
@@ -710,6 +781,7 @@ class EnergyCostCalculator:
             + cashflows["supplier"]
             + cashflows["eeg"]
             + cashflows["wholesale"]
+            + cashflows["grid_fees"]
         )
         if self.goal == "max_cashflow":
             total -= self.calculate_discharge_penalty(use_values=True)
@@ -720,10 +792,10 @@ class EnergyCostCalculator:
     def get_cashflows(self) -> dict:
         """Return the individual cashflow components from the optimized model.
 
-        The dictionary contains four keys: ``"community"``, ``"supplier"``,
-        ``"eeg"`` and ``"wholesale"``. Values are floats representing the
-        EUR cashflow for each market. A negative value means a cost, a positive
-        value means a revenue.
+        The dictionary contains five keys: ``"community"``, ``"supplier"``,
+        ``"eeg"``, ``"wholesale"`` and ``"grid_fees"``. Values are floats
+        representing EUR cashflow components. A negative value means a cost,
+        a positive value means a revenue.
 
         Raises
         ------

@@ -9,6 +9,7 @@ from battery_utility_calculator.battery_utility_calculator import (
     Storage,
     calculate_bidding_curve,
     calculate_multiple_storage_worth,
+    calculate_multiple_storage_worth_by_zone,
     calculate_storage_worth,
     plot_multiple_storage_worth_cashflows,
 )
@@ -150,7 +151,7 @@ def test_calculate_multiple_storage_worth():
     assert isinstance(df_with_cf["storages_to_calc_cashflows"], dict)
 
     fig = plot_multiple_storage_worth_cashflows(df_with_cf, show=False, stacked=False)
-    assert len(fig.data) == 4
+    assert len(fig.data) == 5
 
     with pytest.raises(ValueError, match="missing"):
         plot_multiple_storage_worth_cashflows({"results_df": df_with_cf["results_df"]})
@@ -277,3 +278,71 @@ def test_calculate_bidding_curve_seller():
         bidding_curve["marginal_price_per_kwh"].round(2)
         == correct_df["marginal_price_per_kwh"].round(2)
     ).all()
+
+
+def test_calculate_storage_worth_with_grid_zone_pass_through():
+    baseline_storage = Storage(0, 1, 0, 1)
+    storage_to_calc = Storage(1, 1, 1, 1)
+    fee_map = {
+        "local": 0.0,
+        "medium_voltage": 0.1,
+        "high_voltage": 0.2,
+        "extra_high_voltage": 0.3,
+    }
+
+    low_zone_worth = calculate_storage_worth(
+        baseline_storage=baseline_storage,
+        storage_to_calculate=storage_to_calc,
+        eeg_prices=pd.Series([0, 0, 0], index=idx),
+        wholesale_market_prices=pd.Series([0, 0, 0], index=idx),
+        community_market_prices=pd.Series([0, 0, 0], index=idx),
+        supplier_prices=pd.Series([0, 1, 1], index=idx),
+        solar_generation=pd.Series([0, 0, 0], index=idx),
+        demand=pd.Series([1, 1, 1], index=idx),
+        grid_zone="local",
+        grid_fee_by_zone=fee_map,
+        solver="appsi_highs",
+    )
+    high_zone_worth = calculate_storage_worth(
+        baseline_storage=baseline_storage,
+        storage_to_calculate=storage_to_calc,
+        eeg_prices=pd.Series([0, 0, 0], index=idx),
+        wholesale_market_prices=pd.Series([0, 0, 0], index=idx),
+        community_market_prices=pd.Series([0, 0, 0], index=idx),
+        supplier_prices=pd.Series([0, 1, 1], index=idx),
+        solar_generation=pd.Series([0, 0, 0], index=idx),
+        demand=pd.Series([1, 1, 1], index=idx),
+        grid_zone="extra_high_voltage",
+        grid_fee_by_zone=fee_map,
+        solver="appsi_highs",
+    )
+
+    assert high_zone_worth < low_zone_worth
+
+
+def test_calculate_multiple_storage_worth_by_zone():
+    baseline_storage = Storage(0, 1, 0, 1)
+    storages_to_calc = [Storage(1, 1, 1, 1), Storage(2, 1, 2, 1)]
+    zones = ["local", "high_voltage"]
+
+    result_df = calculate_multiple_storage_worth_by_zone(
+        baseline_storage=baseline_storage,
+        storages_to_calculate=storages_to_calc,
+        zones=zones,
+        eeg_prices=pd.Series([0, 0, 0], index=idx),
+        wholesale_market_prices=pd.Series([0, 0, 0], index=idx),
+        community_market_prices=pd.Series([0, 0, 0], index=idx),
+        supplier_prices=pd.Series([0, 1, 1], index=idx),
+        solar_generation=pd.Series([0, 0, 0], index=idx),
+        demand=pd.Series([1, 1, 1], index=idx),
+        grid_fee_by_zone={
+            "local": 0.0,
+            "high_voltage": 0.2,
+        },
+        solver="appsi_highs",
+    )
+
+    assert "zone" in result_df.columns
+    assert set(result_df["zone"].unique()) == set(zones)
+    # baseline + 2 storages for each zone
+    assert len(result_df) == len(zones) * (1 + len(storages_to_calc))

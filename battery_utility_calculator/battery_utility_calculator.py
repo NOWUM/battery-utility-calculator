@@ -23,6 +23,8 @@ def calculate_storage_worth(
     community_market_prices: pd.Series,
     wholesale_market_prices: pd.Series,
     wholesale_fee: float = 0.3,
+    grid_zone: str = "local",
+    grid_fee_by_zone: dict[str, float] | None = None,
     hours_per_timestep: int | float = 1,
     storage_use_cases: list[str] = ["eeg", "home", "community", "wholesale"],
     allow_community_to_home: bool = False,
@@ -80,6 +82,8 @@ def calculate_storage_worth(
         community_market_prices=community_market_prices,
         wholesale_market_prices=wholesale_market_prices,
         wholesale_fee=wholesale_fee,
+        grid_zone=grid_zone,
+        grid_fee_by_zone=grid_fee_by_zone,
         hours_per_timestep=hours_per_timestep,
         storage_use_cases=storage_use_cases,
         allow_community_to_home=allow_community_to_home,
@@ -102,6 +106,8 @@ def calculate_storage_worth(
         community_market_prices=community_market_prices,
         wholesale_market_prices=wholesale_market_prices,
         wholesale_fee=wholesale_fee,
+        grid_zone=grid_zone,
+        grid_fee_by_zone=grid_fee_by_zone,
         hours_per_timestep=hours_per_timestep,
         storage_use_cases=storage_use_cases,
         allow_community_to_home=allow_community_to_home,
@@ -154,6 +160,8 @@ def calculate_multiple_storage_worth(
     community_market_prices: pd.Series,
     wholesale_market_prices: pd.Series,
     wholesale_fee: float = 0.3,
+    grid_zone: str = "local",
+    grid_fee_by_zone: dict[str, float] | None = None,
     return_charge_timeseries: bool = False,
     return_soc_timeseries: bool = False,
     return_cashflows: bool = False,
@@ -223,6 +231,8 @@ def calculate_multiple_storage_worth(
         community_market_prices=community_market_prices,
         wholesale_market_prices=wholesale_market_prices,
         wholesale_fee=wholesale_fee,
+        grid_zone=grid_zone,
+        grid_fee_by_zone=grid_fee_by_zone,
         eeg_eligible=eeg_eligible,
         discharge_penalty_per_kwh=discharge_penalty_per_kwh,
         cycle_cost_per_kwh=cycle_cost_per_kwh,
@@ -282,6 +292,9 @@ def calculate_multiple_storage_worth(
             eeg_prices=eeg_prices,
             community_market_prices=community_market_prices,
             wholesale_market_prices=wholesale_market_prices,
+            wholesale_fee=wholesale_fee,
+            grid_zone=grid_zone,
+            grid_fee_by_zone=grid_fee_by_zone,
             eeg_eligible=eeg_eligible,
             discharge_penalty_per_kwh=discharge_penalty_per_kwh,
             cycle_cost_per_kwh=cycle_cost_per_kwh,
@@ -400,7 +413,71 @@ def calculate_bidding_curve(
     ]
 
 
-_CASHFLOW_COMPONENT_ORDER = ("community", "supplier", "eeg", "wholesale")
+_CASHFLOW_COMPONENT_ORDER = (
+    "community",
+    "supplier",
+    "eeg",
+    "wholesale",
+    "grid_fees",
+)
+
+
+def calculate_multiple_storage_worth_by_zone(
+    baseline_storage: Storage,
+    storages_to_calculate: list[Storage],
+    zones: list[str],
+    demand: pd.Series,
+    solar_generation: pd.Series,
+    supplier_prices: pd.Series,
+    eeg_prices: pd.Series,
+    community_market_prices: pd.Series,
+    wholesale_market_prices: pd.Series,
+    grid_fee_by_zone: dict[str, float] | None = None,
+    *args,
+    **kwargs,
+) -> pd.DataFrame:
+    """Calculate storage worth for multiple storages across multiple grid zones.
+
+    Returns one row per zone and storage configuration (including baseline row).
+    """
+    rows = []
+    for zone in zones:
+        worth_result = calculate_multiple_storage_worth(
+            baseline_storage=baseline_storage,
+            storages_to_calculate=storages_to_calculate,
+            demand=demand,
+            solar_generation=solar_generation,
+            supplier_prices=supplier_prices,
+            eeg_prices=eeg_prices,
+            community_market_prices=community_market_prices,
+            wholesale_market_prices=wholesale_market_prices,
+            grid_zone=zone,
+            grid_fee_by_zone=grid_fee_by_zone,
+            *args,
+            **kwargs,
+        )
+        worth_df = (
+            worth_result["results_df"].copy()
+            if isinstance(worth_result, dict)
+            else worth_result.copy()
+        )
+        worth_df["zone"] = zone
+        rows.append(worth_df)
+
+    if not rows:
+        return pd.DataFrame(
+            columns=[
+                "id",
+                "c_rate",
+                "volume",
+                "charge_efficiency",
+                "discharge_efficiency",
+                "costs",
+                "worth",
+                "zone",
+            ]
+        )
+    return pd.concat(rows, ignore_index=True)
 
 
 def plot_multiple_storage_worth_cashflows(
