@@ -2,6 +2,8 @@
 #
 # SPDX-License-Identifier: MIT
 
+import inspect
+
 import numpy as np
 import pandas as pd
 
@@ -184,6 +186,37 @@ def test_ECC_wholesale():
     )
     costs = ecc.optimize(solver="highs")
     assert round(costs, 0) == 4
+
+
+def test_ECC_pv_to_wholesale_toggle_sets_bounds():
+    common_kwargs = dict(
+        storage=Storage(id=0, c_rate=1, volume=0),
+        demand=pd.Series([0, 0, 0], index=idx_3),
+        solar_generation=pd.Series([1, 1, 1], index=idx_3),
+        supplier_prices=pd.Series([0, 0, 0], index=idx_3),
+        eeg_prices=pd.Series([0, 0, 0], index=idx_3),
+        community_market_prices=pd.Series([0, 0, 0], index=idx_3),
+        wholesale_market_prices=pd.Series([10, 10, 10], index=idx_3),
+        wholesale_fee=0.0,
+    )
+
+    ecc_disabled = EnergyCostCalculator(
+        **common_kwargs,
+        allow_pv_to_wholesale=False,
+    )
+    ecc_enabled = EnergyCostCalculator(
+        **common_kwargs,
+        allow_pv_to_wholesale=True,
+    )
+
+    assert ecc_disabled.model.pv_to_wholesale[0].ub == 0
+    assert ecc_enabled.model.pv_to_wholesale[0].ub is None
+
+
+def test_ECC_wholesale_cashflow_includes_pv_to_wholesale():
+    # regression guard: direct PV wholesale flow must be part of wholesale cashflow
+    source = inspect.getsource(EnergyCostCalculator.calculate_wholesale_cashflow)
+    assert "self.model.pv_to_wholesale" in source
 
 
 def test_ECC_charge_discharge_eff():

@@ -626,6 +626,12 @@ class EnergyCostCalculator:
             * self.hours_per_timestep
             for timestep in self.timesteps
         )
+        wholesale_earnings += sum(
+            self._get_value(self.model.pv_to_wholesale[timestep], use_values)
+            * self.wholesale_market_prices.loc[timestep]
+            * self.hours_per_timestep
+            for timestep in self.timesteps
+        )
         wholesale_costs = sum(
             self._get_value(self.model.wholesale_to_storage[timestep], use_values)
             * self.wholesale_market_prices.loc[timestep]
