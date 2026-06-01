@@ -821,7 +821,7 @@ def test_ECC_grid_fees_reduce_non_wholesale_cashflow():
         allow_community_to_storage=False,
         allow_pv_to_community=False,
         allow_storage_to_community=False,
-        rented_storage=True,
+        is_rented_storage=True,
     )
     fee_costs = fee_calc.optimize(solver="appsi_highs")
     fee_cashflows = fee_calc.get_cashflows()
@@ -864,7 +864,7 @@ def test_ECC_grid_fees_do_not_affect_wholesale_only_operations():
         allow_pv_to_community=False,
         allow_storage_to_community=False,
         allow_pv_to_wholesale=True,
-        rented_storage=True,
+        is_rented_storage=True,
     )
 
     no_fee_costs = no_fee.optimize(solver="appsi_highs")
@@ -894,7 +894,7 @@ def test_ECC_grid_location_ordering_changes_costs():
             allow_community_to_storage=False,
             allow_pv_to_community=False,
             allow_storage_to_community=False,
-            rented_storage=True,
+            is_rented_storage=True,
         )
         costs_by_storage_location[storage_location] = calc.optimize(
             solver="appsi_highs"
@@ -918,7 +918,7 @@ def test_ECC_own_storage_requires_storage_at_my_location():
             demand=pd.Series([0, 0, 0], index=idx_3),
             my_location="aachen",
             storage_location="liege",
-            rented_storage=False,
+            is_rented_storage=False,
         )
 
 
@@ -934,7 +934,7 @@ def test_ECC_disables_supplier_to_storage_for_non_local_supplier(caplog):
         demand=pd.Series([1, 1, 1], index=idx_3),
         my_location="aachen",
         storage_location="liege",
-        rented_storage=True,
+        is_rented_storage=True,
         allow_community_to_home=False,
         allow_community_to_storage=False,
         allow_pv_to_community=False,
@@ -993,7 +993,7 @@ def test_ECC_multi_location_community_routes_by_price():
         allow_community_to_storage=False,
         allow_storage_to_community=False,
         allow_pv_to_wholesale=True,
-        rented_storage=True,
+        is_rented_storage=True,
     )
     costs = calc.optimize(solver="appsi_highs")
     flows = calc.get_energy_flows()
@@ -1026,7 +1026,7 @@ def test_ECC_remote_storage():
         allow_pv_to_community=False,
         allow_storage_to_community=False,
         allow_pv_to_wholesale=True,
-        rented_storage=True,
+        is_rented_storage=True,
     )
 
     costs = calc.optimize(solver="appsi_highs")
@@ -1059,7 +1059,7 @@ def test_ECC_rented_storage_same_city_charges_tenant_flows():
         allow_pv_to_community=False,
         allow_storage_to_community=False,
         allow_pv_to_wholesale=False,
-        rented_storage=True,
+        is_rented_storage=True,
     )
     costs = calc.optimize(solver="appsi_highs")
     flows = calc.get_energy_flows()
@@ -1094,7 +1094,7 @@ def test_ECC_storage_provider_no_grid_fees_on_btm_pv_shift():
         allow_pv_to_community=False,
         allow_storage_to_community=False,
         allow_pv_to_wholesale=False,
-        rented_storage=False,
+        is_rented_storage=False,
     )
     calc.optimize(solver="appsi_highs")
     flows = calc.get_energy_flows()
@@ -1131,7 +1131,7 @@ def test_ECC_storage_provider_charges_community_import_only():
         allow_pv_to_community=False,
         allow_storage_to_community=False,
         allow_pv_to_wholesale=False,
-        rented_storage=False,
+        is_rented_storage=False,
     )
     calc.optimize(solver="appsi_highs")
     flows = calc.get_energy_flows()
@@ -1199,7 +1199,7 @@ def test_ECC_remote_storage_remote_community_market():
         allow_pv_to_community=False,
         allow_storage_to_community=False,
         allow_pv_to_wholesale=True,
-        rented_storage=True,
+        is_rented_storage=True,
     )
     costs = calc.optimize(solver="appsi_highs")
     flows = calc.get_energy_flows()

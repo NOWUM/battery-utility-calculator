@@ -60,7 +60,7 @@ class EnergyCostCalculator:
         allow_community_to_storage: bool = True,
         allow_community_market_arbitrage: bool = True,
         allow_pv_to_community: bool = True,
-        rented_storage: bool = False,
+        is_rented_storage: bool = False,
         allow_storage_to_community: bool = True,
         allow_wholesale_to_home: bool = False,
         allow_pv_to_wholesale: bool = False,
@@ -144,7 +144,7 @@ class EnergyCostCalculator:
             storage_location if storage_location is not None else self.my_location,
             allowed_locations=set(self.grid_fee_between_locations.keys()),
         )
-        self.rented_storage = rented_storage
+        self.rented_storage = is_rented_storage
         if not self.rented_storage and self.storage_location != self.my_location:
             raise ValueError(
                 "storage_location must equal my_location when rented_storage is False "
