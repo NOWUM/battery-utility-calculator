@@ -60,6 +60,7 @@ class EnergyCostCalculator:
         allow_community_to_storage: bool = True,
         allow_community_market_arbitrage: bool = True,
         allow_pv_to_community: bool = True,
+        rented_storage: bool = False,
         allow_storage_to_community: bool = True,
         allow_wholesale_to_home: bool = False,
         allow_pv_to_wholesale: bool = False,
@@ -87,6 +88,7 @@ class EnergyCostCalculator:
             community_market_prices (dict[str, pd.Series] | None): Community market prices per location. ``None`` or an empty dict disables the community market (flows indexed by ``my_location`` at zero). Otherwise keys must be present in ``grid_fee_between_locations``. Values in EUR per kWh with pd.DateTimeIndex.
             wholesale_market_prices (pd.Series): The wholesale market prices for the optimization. Values should be in EUR per kWh. Index has to be pd.DateTimeIndex.
             hours_per_timestep (int | float): Duration of each timestep in hours (e.g. 0.25 for 15 minutes). Used to convert kW inputs to kWh and to cap storage charge/discharge energy per step.
+            rented_storage (bool): If True, grid fees apply to tenant flows when using someone else's storage (buyer). If False, only external imports into storage are charged (storage provider / seller). Must be set explicitly; not inferred from locations.
             storage_use_cases (list[str]): The use cases for energy storage. Allowed values are "eeg", "wholesale", "community", "home"
             allow_community_to_storage (bool): Import from community market into the home SOC bucket (community → storage → home).
             allow_community_market_arbitrage (bool): Import into the community SOC bucket for round-trip arbitrage (requires ``allow_storage_to_community`` to sell back).
@@ -142,6 +144,7 @@ class EnergyCostCalculator:
             storage_location if storage_location is not None else self.my_location,
             allowed_locations=set(self.grid_fee_between_locations.keys()),
         )
+        self.rented_storage = rented_storage
         self.community_market_prices, self.community_locations = (
             self.__prepare_community_market_prices__(community_market_prices)
         )
@@ -926,29 +929,29 @@ class EnergyCostCalculator:
         return (wholesale_earnings - wholesale_costs) * (1 - self.wholesale_fee)
 
     def calculate_grid_fee_cashflow(self, use_values=False):
-        pv_charge = sum(
-            self.__get_value__(self.model.pv_to_storage[timestep, use], use_values)
-            for timestep in self.timesteps
-            for use in self.storage_use_cases
-            if use != "wholesale"
-        )
         supplier_charge = sum(
             self.__get_value__(self.model.supplier_to_storage[timestep], use_values)
             for timestep in self.timesteps
         )
-        storage_to_home = sum(
-            self.__get_value__(self.model.storage_to_home[timestep], use_values)
-            for timestep in self.timesteps
-        )
-
-        fee_energy = (
-            self.grid_fee_rate(self.my_location, self.storage_location) * pv_charge
-            + self.grid_fee_rate(self.my_location, self.storage_location)
+        grid_fee = (
+            self.grid_fee_rate(self.my_location, self.storage_location)
             * supplier_charge
-            + self.grid_fee_rate(self.storage_location, self.my_location)
-            * storage_to_home
         )
 
+        if self.rented_storage:
+            # extra grid fee for PV -> storage
+            pv_charge = sum(
+                self.__get_value__(self.model.pv_to_storage[timestep, use], use_values)
+                for timestep in self.timesteps
+                for use in self.storage_use_cases
+            )
+            grid_fee = (
+                grid_fee
+                + self.grid_fee_rate(self.my_location, self.storage_location)
+                * pv_charge
+            )
+
+        # community market to storage flows
         for location in self.community_market_prices:
             community_to_storage = sum(
                 self.__community_to_storage_value__(
@@ -956,15 +959,22 @@ class EnergyCostCalculator:
                 )
                 for timestep in self.timesteps
             )
-            storage_to_community = sum(
-                self.__community_flow_value__(
-                    "storage_to_community",
-                    timestep,
-                    location=location,
-                    use_values=use_values,
+            if self.rented_storage or location != self.storage_location:
+                grid_fee = (
+                    grid_fee
+                    + self.grid_fee_rate(location, self.storage_location)
+                    * community_to_storage
                 )
-                for timestep in self.timesteps
-            )
+                grid_fee = (
+                    grid_fee
+                    + self.grid_fee_rate(self.storage_location, self.my_location)
+                    * community_to_storage
+                )
+
+            if not self.rented_storage:
+                continue
+
+            # grid fee from community to home
             community_to_home = sum(
                 self.__community_flow_value__(
                     "community_to_home",
@@ -974,29 +984,15 @@ class EnergyCostCalculator:
                 )
                 for timestep in self.timesteps
             )
-            pv_to_community = sum(
-                self.__community_flow_value__(
-                    "pv_to_community",
-                    timestep,
-                    location=location,
-                    use_values=use_values,
-                )
-                for timestep in self.timesteps
-            )
-            fee_energy = (
-                fee_energy
-                + self.grid_fee_rate(location, self.storage_location)
-                * community_to_storage
-                + self.grid_fee_rate(self.storage_location, location)
-                * storage_to_community
+            grid_fee = (
+                grid_fee
                 + self.grid_fee_rate(location, self.my_location) * community_to_home
-                + self.grid_fee_rate(self.my_location, location) * pv_to_community
             )
 
-        if isinstance(fee_energy, (int, float)) and fee_energy <= 0:
+        if isinstance(grid_fee, (int, float)) and grid_fee <= 0:
             return 0.0
 
-        return -fee_energy
+        return -grid_fee
 
     def calculate_discharge_penalty(self, use_values=False):
         total_discharge = sum(

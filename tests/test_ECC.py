@@ -780,7 +780,9 @@ def test_storage_usage_kpis_zero_volume_storage():
 
 def test_ECC_grid_fees_reduce_non_wholesale_cashflow():
     base_calc = EnergyCostCalculator(
-        storage=Storage(id=0, c_rate=1, volume=1),
+        storage=Storage(
+            id=0, c_rate=1, volume=1, charge_efficiency=1, discharge_efficiency=1
+        ),
         eeg_prices=pd.Series([0, 2, 0], index=idx_3),
         wholesale_market_prices=pd.Series([0, 0, 0], index=idx_3),
         community_market_prices={"aachen": pd.Series([0, 0, 0], index=idx_3)},
@@ -796,6 +798,8 @@ def test_ECC_grid_fees_reduce_non_wholesale_cashflow():
         allow_storage_to_community=False,
     )
     base_costs = base_calc.optimize(solver="appsi_highs")
+
+    assert np.isclose(base_costs, 2, atol=1e-3)
 
     fee_calc = EnergyCostCalculator(
         storage=Storage(
@@ -817,12 +821,13 @@ def test_ECC_grid_fees_reduce_non_wholesale_cashflow():
         allow_community_to_storage=False,
         allow_pv_to_community=False,
         allow_storage_to_community=False,
+        rented_storage=True,
     )
     fee_costs = fee_calc.optimize(solver="appsi_highs")
     fee_cashflows = fee_calc.get_cashflows()
 
     assert fee_costs < base_costs
-    assert fee_cashflows["grid_fees"] == -0.1
+    assert fee_cashflows["grid_fees"] == -0.05
 
 
 def test_ECC_grid_fees_do_not_affect_wholesale_only_operations():
@@ -888,12 +893,13 @@ def test_ECC_grid_location_ordering_changes_costs():
             allow_community_to_storage=False,
             allow_pv_to_community=False,
             allow_storage_to_community=False,
+            rented_storage=True,
         )
         costs_by_storage_location[storage_location] = calc.optimize(
             solver="appsi_highs"
         )
 
-    # Storage in my_location avoids any inter-location grid fees.
+    # Storage in my_location avoids any inter-location grid fees (tenant perspective).
     assert costs_by_storage_location["aachen"] >= costs_by_storage_location["juelich"]
     assert costs_by_storage_location["aachen"] >= costs_by_storage_location["heerlen"]
     assert costs_by_storage_location["aachen"] >= costs_by_storage_location["liege"]
@@ -953,30 +959,31 @@ def test_ECC_multi_location_community_routes_by_price():
         eeg_prices=pd.Series([0, 0, 0], index=idx_3),
         wholesale_market_prices=pd.Series([0, 0, 0], index=idx_3),
         community_market_prices={
-            "aachen": pd.Series([1, 1, 1], index=idx_3),
-            "liege": pd.Series([5, 5, 5], index=idx_3),
+            "aachen": pd.Series([5, 5, 5], index=idx_3),
+            "liege": pd.Series([1, 1, 1], index=idx_3),
         },
-        supplier_prices=pd.Series([0, 0, 0], index=idx_3),
+        supplier_prices=pd.Series([10, 10, 10], index=idx_3),
         solar_generation=pd.Series([1, 0, 0], index=idx_3),
-        demand=pd.Series([0, 0, 0], index=idx_3),
+        demand=pd.Series([0, 0, 1], index=idx_3),
         allow_pv_to_community=True,
         my_location="aachen",
         grid_fee_between_locations={
-            "aachen": {"aachen": 0.0, "liege": 0.01},
-            "liege": {"aachen": 0.01, "liege": 0.0},
+            "aachen": {"aachen": 0.0, "liege": 0.1},
+            "liege": {"aachen": 0.1, "liege": 0.0},
         },
-        allow_community_to_home=False,
+        allow_community_to_home=True,
         allow_community_to_storage=False,
         allow_storage_to_community=False,
         allow_pv_to_wholesale=True,
+        rented_storage=True,
     )
     costs = calc.optimize(solver="appsi_highs")
     flows = calc.get_energy_flows()
 
-    assert flows["pv_to_community_liege"].iloc[0] == 1.0
-    assert flows["pv_to_community_aachen"].iloc[0] == 0.0
+    assert flows["pv_to_community_aachen"].iloc[0] == 1.0
+    assert flows["pv_to_community_liege"].iloc[0] == 0.0
     assert flows["pv_to_community"].iloc[0] == 1.0
-    assert costs == 4.99
+    assert np.isclose(costs, 3.9)
 
 
 def test_ECC_remote_storage():
@@ -1001,6 +1008,7 @@ def test_ECC_remote_storage():
         allow_pv_to_community=False,
         allow_storage_to_community=False,
         allow_pv_to_wholesale=True,
+        rented_storage=True,
     )
 
     costs = calc.optimize(solver="appsi_highs")
@@ -1009,8 +1017,111 @@ def test_ECC_remote_storage():
 
     assert flows["pv_to_storage_for_home"].iloc[0] == 1.0
     assert flows["storage_to_home"].iloc[2] == 1.0
-    assert np.isclose(costs, -2)
-    assert np.isclose(grid_fees, -2)
+    assert np.isclose(costs, -1)
+    assert np.isclose(grid_fees, -1)
+
+
+def test_ECC_rented_storage_same_city_charges_tenant_flows():
+    calc = EnergyCostCalculator(
+        storage=Storage(
+            id=0, c_rate=1, volume=1, charge_efficiency=1, discharge_efficiency=1
+        ),
+        eeg_prices=pd.Series([0, 0, 0], index=idx_3),
+        wholesale_market_prices=pd.Series([0, 0, 0], index=idx_3),
+        community_market_prices={"aachen": pd.Series([0, 0, 0], index=idx_3)},
+        supplier_prices=pd.Series([10, 10, 10], index=idx_3),
+        solar_generation=pd.Series([1, 0, 0], index=idx_3),
+        demand=pd.Series([0, 0, 1], index=idx_3),
+        my_location="aachen",
+        storage_location="aachen",
+        grid_fee_between_locations={"aachen": {"aachen": 0.05}},
+        storage_use_cases=["home"],
+        allow_community_to_home=False,
+        allow_community_to_storage=False,
+        allow_pv_to_community=False,
+        allow_storage_to_community=False,
+        allow_pv_to_wholesale=False,
+        rented_storage=True,
+    )
+    costs = calc.optimize(solver="appsi_highs")
+    flows = calc.get_energy_flows()
+    grid_fees = calc.calculate_grid_fee_cashflow(use_values=True)
+
+    assert np.isclose(costs, -0.05, atol=1e-3)
+    assert flows["pv_to_storage_for_home"].iloc[0] == 1.0
+    assert flows["storage_to_home"].iloc[2] == 1.0
+    assert np.isclose(grid_fees, -0.05)
+
+
+def test_ECC_storage_provider_no_grid_fees_on_btm_pv_shift():
+    calc = EnergyCostCalculator(
+        storage=Storage(
+            id=0, c_rate=1, volume=1, charge_efficiency=1, discharge_efficiency=1
+        ),
+        eeg_prices=pd.Series([0, 0, 0], index=idx_3),
+        wholesale_market_prices=pd.Series([0, 0, 0], index=idx_3),
+        community_market_prices={"aachen": pd.Series([0, 0, 0], index=idx_3)},
+        supplier_prices=pd.Series([10, 10, 10], index=idx_3),
+        solar_generation=pd.Series([1, 0, 0], index=idx_3),
+        demand=pd.Series([0, 0, 1], index=idx_3),
+        my_location="aachen",
+        storage_location="aachen",
+        grid_fee_between_locations={
+            "aachen": {"aachen": 0.0, "liege": 5.0},
+            "liege": {"aachen": 5.0, "liege": 0.0},
+        },
+        storage_use_cases=["home"],
+        allow_community_to_home=False,
+        allow_community_to_storage=False,
+        allow_pv_to_community=False,
+        allow_storage_to_community=False,
+        allow_pv_to_wholesale=False,
+        rented_storage=False,
+    )
+    calc.optimize(solver="appsi_highs")
+    flows = calc.get_energy_flows()
+
+    assert flows["pv_to_storage_for_home"].iloc[0] == 1.0
+    assert flows["storage_to_home"].iloc[2] == 1.0
+    assert np.isclose(calc.get_cashflows()["grid_fees"], 0.0)
+
+
+def test_ECC_storage_provider_charges_community_import_only():
+    calc = EnergyCostCalculator(
+        storage=Storage(
+            id=0, c_rate=1, volume=1, charge_efficiency=1, discharge_efficiency=1
+        ),
+        eeg_prices=pd.Series([0, 0, 0], index=idx_3),
+        wholesale_market_prices=pd.Series([0, 0, 0], index=idx_3),
+        community_market_prices={
+            "heerlen": pd.Series([0, 10, 10], index=idx_3),
+            "liege": pd.Series([10, 10, 10], index=idx_3),
+        },
+        supplier_prices=pd.Series([50, 50, 50], index=idx_3),
+        solar_generation=pd.Series([0, 0, 0], index=idx_3),
+        demand=pd.Series([0, 0, 1], index=idx_3),
+        my_location="aachen",
+        storage_location="aachen",
+        grid_fee_between_locations={
+            "aachen": {"aachen": 0.0, "liege": 0.2, "heerlen": 0.2},
+            "liege": {"aachen": 0.2, "liege": 0.0, "heerlen": 0.2},
+            "heerlen": {"aachen": 0.2, "heerlen": 0.0, "liege": 0.2},
+        },
+        storage_use_cases=["home"],
+        allow_community_to_storage=True,
+        allow_community_to_home=False,
+        allow_pv_to_community=False,
+        allow_storage_to_community=False,
+        allow_pv_to_wholesale=False,
+        rented_storage=False,
+    )
+    calc.optimize(solver="appsi_highs")
+    flows = calc.get_energy_flows()
+    grid_fees = calc.calculate_grid_fee_cashflow(use_values=True)
+
+    assert calc.model.community_to_storage_for_home[0, "heerlen"].value == 1.0
+    assert np.isclose(flows["pv_to_storage_for_home"].sum(), 0.0)
+    assert np.isclose(grid_fees, -0.2)
 
 
 def test_ECC_no_community_market_when_none_or_empty():
@@ -1070,6 +1181,7 @@ def test_ECC_remote_storage_remote_community_market():
         allow_pv_to_community=False,
         allow_storage_to_community=False,
         allow_pv_to_wholesale=True,
+        rented_storage=True,
     )
     costs = calc.optimize(solver="appsi_highs")
     flows = calc.get_energy_flows()
