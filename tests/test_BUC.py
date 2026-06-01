@@ -573,6 +573,7 @@ def test_calculate_storage_worth_with_my_location_pass_through():
         demand=pd.Series([1, 1, 1], index=idx),
         my_location="aachen",
         storage_location="liege",
+        rented_storage=True,
         solver="appsi_highs",
         allow_community_to_home=False,
         allow_community_to_storage=False,

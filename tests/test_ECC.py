@@ -864,6 +864,7 @@ def test_ECC_grid_fees_do_not_affect_wholesale_only_operations():
         allow_pv_to_community=False,
         allow_storage_to_community=False,
         allow_pv_to_wholesale=True,
+        rented_storage=True,
     )
 
     no_fee_costs = no_fee.optimize(solver="appsi_highs")
@@ -905,6 +906,22 @@ def test_ECC_grid_location_ordering_changes_costs():
     assert costs_by_storage_location["aachen"] >= costs_by_storage_location["liege"]
 
 
+def test_ECC_own_storage_requires_storage_at_my_location():
+    with pytest.raises(ValueError, match="storage_location must equal my_location"):
+        EnergyCostCalculator(
+            storage=Storage(id=0, c_rate=1, volume=1),
+            eeg_prices=pd.Series([0, 0, 0], index=idx_3),
+            wholesale_market_prices=pd.Series([0, 0, 0], index=idx_3),
+            community_market_prices={"aachen": pd.Series([0, 0, 0], index=idx_3)},
+            supplier_prices=pd.Series([0, 0, 0], index=idx_3),
+            solar_generation=pd.Series([0, 0, 0], index=idx_3),
+            demand=pd.Series([0, 0, 0], index=idx_3),
+            my_location="aachen",
+            storage_location="liege",
+            rented_storage=False,
+        )
+
+
 def test_ECC_disables_supplier_to_storage_for_non_local_supplier(caplog):
     caplog.set_level(logging.WARNING, logger="battery_utility")
     calc = EnergyCostCalculator(
@@ -917,6 +934,7 @@ def test_ECC_disables_supplier_to_storage_for_non_local_supplier(caplog):
         demand=pd.Series([1, 1, 1], index=idx_3),
         my_location="aachen",
         storage_location="liege",
+        rented_storage=True,
         allow_community_to_home=False,
         allow_community_to_storage=False,
         allow_pv_to_community=False,
