@@ -65,7 +65,7 @@ def calculate_storage_worth(
     grid_fee_between_locations: dict[str, dict[str, float]]
     | None = DEFAULT_GRID_FEE_BETWEEN_LOCATIONS,
     storage_location: str | None = None,
-    rented_storage: bool = False,
+    is_rented_storage: bool = False,
     eeg_eligible: bool = True,
     goal: str = "max_cashflow",
     discharge_penalty_per_kwh: float = 1e-6,
@@ -97,7 +97,7 @@ def calculate_storage_worth(
         allow_pv_to_wholesale (bool, optional): Allow direct PV export to wholesale. Defaults to False.
         allow_wholesale_to_storage (bool, optional): Allow wholesale imports into storage. Defaults to True.
         allow_storage_to_wholesale (bool, optional): Wether to allow selling from storage to wholesale market. Defaults to True.
-        rented_storage (bool, optional): If True, grid fees follow tenant (buyer) flows; if False, storage-provider flows only. Defaults to False.
+        is_rented_storage (bool, optional): If True, grid fees follow tenant (buyer) flows; if False, storage-provider flows only. Defaults to False.
         goal (str, optional): Optimization goal. Defaults to "max_cashflow".
         return_charge_timeseries (bool, optional): If True, returns dict with charge timeseries data.
             Default is False.
@@ -139,7 +139,7 @@ def calculate_storage_worth(
         my_location=my_location,
         grid_fee_between_locations=grid_fee_between_locations,
         storage_location=storage_location,
-        is_rented_storage=rented_storage,
+        is_rented_storage=is_rented_storage,
         eeg_eligible=eeg_eligible,
         goal=goal,
         discharge_penalty_per_kwh=discharge_penalty_per_kwh,
@@ -171,7 +171,7 @@ def calculate_storage_worth(
         my_location=my_location,
         grid_fee_between_locations=grid_fee_between_locations,
         storage_location=storage_location,
-        is_rented_storage=rented_storage,
+        is_rented_storage=is_rented_storage,
         eeg_eligible=eeg_eligible,
         goal=goal,
         discharge_penalty_per_kwh=discharge_penalty_per_kwh,
@@ -234,7 +234,7 @@ def calculate_multiple_storage_worth(
     grid_fee_between_locations: dict[str, dict[str, float]]
     | None = DEFAULT_GRID_FEE_BETWEEN_LOCATIONS,
     storage_location: str | None = None,
-    rented_storage: bool = False,
+    is_rented_storage: bool = False,
     eeg_eligible: bool = True,
     goal: str = "max_cashflow",
     discharge_penalty_per_kwh: float = 1e-6,
@@ -266,7 +266,7 @@ def calculate_multiple_storage_worth(
         allow_pv_to_wholesale (bool, optional): Allow direct PV export to wholesale. Defaults to False.
         allow_wholesale_to_storage (bool, optional): Allow wholesale imports into storage. Defaults to True.
         allow_storage_to_wholesale (bool, optional): Wether to allow selling from storage to wholesale market. Defaults to True.
-        rented_storage (bool, optional): If True, grid fees follow tenant (buyer) flows; if False, storage-provider flows only. Defaults to False.
+        is_rented_storage (bool, optional): If True, grid fees follow tenant (buyer) flows; if False, storage-provider flows only. Defaults to False.
         goal (str, optional): Optimization goal. Defaults to "max_cashflow".
         return_charge_timeseries (bool, optional): If True, returns dict with charge timeseries data. Defaults to False.
         return_soc_timeseries (bool, optional): If True, returns dict with SOC timeseries data. Defaults to False.
@@ -325,7 +325,7 @@ def calculate_multiple_storage_worth(
         my_location=my_location,
         grid_fee_between_locations=grid_fee_between_locations,
         storage_location=storage_location,
-        is_rented_storage=rented_storage,
+        is_rented_storage=is_rented_storage,
         eeg_eligible=eeg_eligible,
         goal=goal,
         discharge_penalty_per_kwh=discharge_penalty_per_kwh,
@@ -402,7 +402,7 @@ def calculate_multiple_storage_worth(
             my_location=my_location,
             grid_fee_between_locations=grid_fee_between_locations,
             storage_location=storage_location,
-            is_rented_storage=rented_storage,
+            is_rented_storage=is_rented_storage,
             eeg_eligible=eeg_eligible,
             goal=goal,
             discharge_penalty_per_kwh=discharge_penalty_per_kwh,
@@ -489,7 +489,7 @@ def calculate_multiple_storage_worth_by_location(
 ) -> pd.DataFrame:
     """Calculate storage worth for multiple storages across multiple locations.
 
-    Uses ``rented_storage=True`` (tenant / buyer perspective) for grid-fee flows at each
+    Uses ``is_rented_storage=True`` (tenant / buyer perspective) for grid-fee flows at each
     ``storage_location``. Returns one row per location and storage configuration (including baseline row).
     """
     rows = []
@@ -518,7 +518,7 @@ def calculate_multiple_storage_worth_by_location(
             my_location=my_location,
             grid_fee_between_locations=grid_fee_between_locations,
             storage_location=location,
-            rented_storage=True,
+            is_rented_storage=True,
             eeg_eligible=eeg_eligible,
             goal=goal,
             discharge_penalty_per_kwh=discharge_penalty_per_kwh,
