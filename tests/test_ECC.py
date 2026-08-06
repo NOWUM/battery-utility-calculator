@@ -1417,6 +1417,95 @@ def test_ECC_full_use_cases_still_allow_storage_trading():
     assert sold > 0
 
 
+def test_ECC_energy_flows_report_non_storage_flows_without_use_cases():
+    # pv_to_eeg and supplier_to_home never touch the storage, so restricting
+    # storage_use_cases must not zero them out in the report
+    calc = EnergyCostCalculator(
+        storage=Storage(
+            id=0, c_rate=1, volume=0, charge_efficiency=1, discharge_efficiency=1
+        ),
+        eeg_prices=pd.Series([5, 5, 5], index=idx_3),
+        wholesale_market_prices=pd.Series([0, 0, 0], index=idx_3),
+        community_market_prices={"aachen": pd.Series([0, 0, 0], index=idx_3)},
+        supplier_prices=pd.Series([1, 1, 1], index=idx_3),
+        solar_generation=pd.Series([2, 0, 0], index=idx_3),
+        demand=pd.Series([1, 1, 1], index=idx_3),
+        storage_use_cases=["wholesale"],
+        allow_community_to_home=False,
+        allow_community_to_storage=False,
+        allow_pv_to_community=False,
+        allow_storage_to_community=False,
+    )
+    calc.optimize(solver="appsi_highs")
+    flows = calc.get_energy_flows()
+
+    assert np.isclose(flows["pv_to_eeg"].sum(), 2.0)
+    assert np.isclose(flows["supplier_to_home"].sum(), 3.0)
+    # the report must add up to the demand it states
+    covered = (
+        flows["pv_to_home"] + flows["supplier_to_home"] + flows["storage_to_home"]
+    ) + flows["community_to_home"]
+    assert np.allclose(covered, flows["demand"])
+
+
+def test_ECC_energy_flows_report_community_imports_without_community_use_case():
+    calc = EnergyCostCalculator(
+        storage=Storage(
+            id=0, c_rate=1, volume=1, charge_efficiency=1, discharge_efficiency=1
+        ),
+        eeg_prices=pd.Series([0, 0, 0], index=idx_3),
+        wholesale_market_prices=pd.Series([0, 0, 0], index=idx_3),
+        community_market_prices={"aachen": pd.Series([1, 1, 1], index=idx_3)},
+        supplier_prices=pd.Series([50, 50, 50], index=idx_3),
+        solar_generation=pd.Series([0, 0, 0], index=idx_3),
+        demand=pd.Series([0, 0, 1], index=idx_3),
+        storage_use_cases=["home"],
+        allow_community_to_storage=True,
+        allow_community_to_home=False,
+        allow_pv_to_community=False,
+        allow_storage_to_community=False,
+        allow_storage_to_wholesale=False,
+    )
+    calc.optimize(solver="appsi_highs")
+    flows = calc.get_energy_flows()
+
+    charged = sum(
+        calc.model.community_to_storage_for_home[timestep, "aachen"].value
+        for timestep in calc.timesteps
+    )
+    assert np.isclose(charged, 1.0)
+    assert np.isclose(flows["community_to_storage"].sum(), charged)
+    assert np.isclose(flows["community_to_storage_aachen"].sum(), charged)
+    assert np.isclose(
+        calc.get_storage_usage_kpis()["charged_by_source_kwh"]["community"], charged
+    )
+
+
+def test_ECC_energy_flows_report_pv_to_community_without_community_use_case():
+    calc = EnergyCostCalculator(
+        storage=Storage(
+            id=0, c_rate=1, volume=0, charge_efficiency=1, discharge_efficiency=1
+        ),
+        eeg_prices=pd.Series([0, 0, 0], index=idx_3),
+        wholesale_market_prices=pd.Series([0, 0, 0], index=idx_3),
+        community_market_prices={"aachen": pd.Series([5, 5, 5], index=idx_3)},
+        supplier_prices=pd.Series([50, 50, 50], index=idx_3),
+        solar_generation=pd.Series([1, 0, 0], index=idx_3),
+        demand=pd.Series([0, 0, 0], index=idx_3),
+        storage_use_cases=["home"],
+        allow_pv_to_community=True,
+        allow_community_to_home=False,
+        allow_community_to_storage=False,
+        allow_storage_to_community=False,
+    )
+    calc.optimize(solver="appsi_highs")
+    flows = calc.get_energy_flows()
+
+    # pv_to_community bypasses the storage entirely
+    assert np.isclose(flows["pv_to_community"].sum(), 1.0)
+    assert np.isclose(flows["pv_to_community_aachen"].sum(), 1.0)
+
+
 def test_ECC_no_community_market_when_none_or_empty():
     common_kwargs = dict(
         storage=Storage(id=0, c_rate=1, volume=1),

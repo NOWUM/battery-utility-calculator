@@ -1136,127 +1136,73 @@ class EnergyCostCalculator:
     def get_energy_flows(self) -> pd.DataFrame:
         energy_flows = pd.DataFrame(index=self.timesteps)
 
-        if "wholesale" in self.storage_use_cases:
-            energy_flows["storage_to_wholesale"] = [
-                self.model.storage_to_wholesale[timestep].value
-                for timestep in self.timesteps
+        # every flow variable exists no matter which use cases are active -
+        # disabled paths are declared with bounds=(0, 0) - so all of them can be
+        # read directly. Gating them on storage_use_cases would zero out flows
+        # that never touch the storage, such as pv_to_eeg or supplier_to_home.
+        for var_name in (
+            "storage_to_wholesale",
+            "wholesale_to_storage",
+            "pv_to_wholesale",
+            "pv_to_eeg",
+            "storage_to_eeg",
+            "storage_to_home",
+            "supplier_to_home",
+            "supplier_to_storage",
+            "pv_to_home",
+        ):
+            model_var = getattr(self.model, var_name)
+            energy_flows[var_name] = [
+                model_var[timestep].value for timestep in self.timesteps
             ]
-            energy_flows["wholesale_to_storage"] = [
-                self.model.wholesale_to_storage[timestep].value
-                for timestep in self.timesteps
-            ]
-            energy_flows["pv_to_wholesale"] = [
-                self.model.pv_to_wholesale[timestep].value
-                for timestep in self.timesteps
-            ]
-            energy_flows["pv_to_storage_for_wholesale"] = [
-                self.model.pv_to_storage[timestep, "wholesale"].value
-                for timestep in self.timesteps
-            ]
-        else:
-            energy_flows["storage_to_wholesale"] = 0
-            energy_flows["wholesale_to_storage"] = 0
-            energy_flows["pv_to_wholesale"] = 0
-            energy_flows["pv_to_storage_for_wholesale"] = 0
 
-        if "eeg" in self.storage_use_cases:
-            energy_flows["pv_to_eeg"] = [
-                self.model.pv_to_eeg[timestep].value for timestep in self.timesteps
-            ]
-            energy_flows["storage_to_eeg"] = [
-                self.model.storage_to_eeg[timestep].value for timestep in self.timesteps
-            ]
-            energy_flows["pv_to_storage_for_eeg"] = [
-                self.model.pv_to_storage[timestep, "eeg"].value
-                for timestep in self.timesteps
-            ]
-        else:
-            energy_flows["pv_to_eeg"] = 0
-            energy_flows["storage_to_eeg"] = 0
-            energy_flows["pv_to_storage_for_eeg"] = 0
+        community_by_location: dict[str, dict[str, list]] = {}
+        community_totals: dict[str, list] = {}
+        for var_name in (
+            "storage_to_community",
+            "pv_to_community",
+            "community_to_storage_for_home",
+            "community_to_storage_for_community",
+            "community_to_home",
+        ):
+            by_location, aggregate = self.__community_flow_series__(var_name)
+            for location, values in by_location.items():
+                energy_flows[f"{var_name}_{location}"] = values
+            energy_flows[var_name] = aggregate
+            community_by_location[var_name] = by_location
+            community_totals[var_name] = aggregate
 
-        if "community" in self.storage_use_cases:
-            for var_name in (
-                "storage_to_community",
-                "pv_to_community",
-                "community_to_storage_for_home",
-                "community_to_storage_for_community",
-            ):
-                by_location, aggregate = self.__community_flow_series__(var_name)
-                for location, values in by_location.items():
-                    energy_flows[f"{var_name}_{location}"] = values
-                energy_flows[var_name] = aggregate
-            _, home_agg = self.__community_flow_series__(
-                "community_to_storage_for_home"
+        # combined view over both community SOC buckets
+        energy_flows["community_to_storage"] = [
+            for_home + for_community
+            for for_home, for_community in zip(
+                community_totals["community_to_storage_for_home"],
+                community_totals["community_to_storage_for_community"],
+                strict=True,
             )
-            _, community_agg = self.__community_flow_series__(
-                "community_to_storage_for_community"
-            )
-            energy_flows["community_to_storage"] = [
-                h + c for h, c in zip(home_agg, community_agg, strict=True)
+        ]
+        for location in self.community_market_prices:
+            energy_flows[f"community_to_storage_{location}"] = [
+                for_home + for_community
+                for for_home, for_community in zip(
+                    community_by_location["community_to_storage_for_home"][location],
+                    community_by_location["community_to_storage_for_community"][
+                        location
+                    ],
+                    strict=True,
+                )
             ]
-            for location in self.community_market_prices:
-                energy_flows[f"community_to_storage_{location}"] = [
-                    float(
-                        self.model.community_to_storage_for_home[
-                            timestep, location
-                        ].value
-                        or 0.0
-                    )
-                    + float(
-                        self.model.community_to_storage_for_community[
-                            timestep, location
-                        ].value
-                        or 0.0
-                    )
+
+        # pv_to_storage is the only variable actually indexed by the use cases
+        for use_case in ("home", "eeg", "wholesale", "community"):
+            column = f"pv_to_storage_for_{use_case}"
+            if use_case in self.storage_use_cases:
+                energy_flows[column] = [
+                    self.model.pv_to_storage[timestep, use_case].value
                     for timestep in self.timesteps
                 ]
-            energy_flows["pv_to_storage_for_community"] = [
-                self.model.pv_to_storage[timestep, "community"].value
-                for timestep in self.timesteps
-            ]
-        else:
-            energy_flows["storage_to_community"] = 0
-            energy_flows["pv_to_community"] = 0
-            energy_flows["community_to_storage"] = 0
-            energy_flows["community_to_storage_for_home"] = 0
-            energy_flows["community_to_storage_for_community"] = 0
-            energy_flows["pv_to_storage_for_community"] = 0
-
-        _, community_to_home = self.__community_flow_series__("community_to_home")
-        energy_flows["community_to_home"] = community_to_home
-        for location in self.community_market_prices:
-            energy_flows[f"community_to_home_{location}"] = [
-                float(self.model.community_to_home[timestep, location].value or 0.0)
-                for timestep in self.timesteps
-            ]
-
-        if "home" in self.storage_use_cases:
-            energy_flows["storage_to_home"] = [
-                self.model.storage_to_home[timestep].value
-                for timestep in self.timesteps
-            ]
-            energy_flows["supplier_to_home"] = [
-                self.model.supplier_to_home[timestep].value
-                for timestep in self.timesteps
-            ]
-            energy_flows["supplier_to_storage"] = [
-                self.model.supplier_to_storage[timestep].value
-                for timestep in self.timesteps
-            ]
-            energy_flows["pv_to_storage_for_home"] = [
-                self.model.pv_to_storage[timestep, "home"].value
-                for timestep in self.timesteps
-            ]
-            energy_flows["pv_to_home"] = [
-                self.model.pv_to_home[timestep].value for timestep in self.timesteps
-            ]
-        else:
-            energy_flows["storage_to_home"] = 0
-            energy_flows["supplier_to_home"] = 0
-            energy_flows["supplier_to_storage"] = 0
-            energy_flows["pv_to_storage_for_home"] = 0
-            energy_flows["pv_to_home"] = 0
+            else:
+                energy_flows[column] = 0
 
         energy_flows["demand"] = self.demand.values
 
