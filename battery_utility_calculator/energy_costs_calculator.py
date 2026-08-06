@@ -88,7 +88,7 @@ class EnergyCostCalculator:
             community_market_prices (dict[str, pd.Series] | None): Community market prices per location. ``None`` or an empty dict disables the community market (flows indexed by ``my_location`` at zero). Otherwise keys must be present in ``grid_fee_between_locations``. Values in EUR per kWh with pd.DateTimeIndex.
             wholesale_market_prices (pd.Series): The wholesale market prices for the optimization. Values should be in EUR per kWh. Index has to be pd.DateTimeIndex.
             hours_per_timestep (int | float): Duration of each timestep in hours (e.g. 0.25 for 15 minutes). Used to convert kW inputs to kWh and to cap storage charge/discharge energy per step.
-            rented_storage (bool): If True, grid fees apply to tenant flows when using someone else's storage (buyer). If False, only external imports into storage are charged (storage provider / seller); then ``storage_location`` must equal ``my_location``.
+            is_rented_storage (bool): If True, grid fees apply to tenant flows when using someone else's storage (buyer). If False, only external imports into storage are charged (storage provider / seller); then ``storage_location`` must equal ``my_location``. Imports from a community market straight to the home bypass the storage and are charged in both cases.
             storage_use_cases (list[str]): The use cases for energy storage. Allowed values are "eeg", "wholesale", "community", "home"
             allow_community_to_storage (bool): Import from community market into the home SOC bucket (community → storage → home).
             allow_community_market_arbitrage (bool): Import into the community SOC bucket for round-trip arbitrage (requires ``allow_storage_to_community`` to sell back).
@@ -976,10 +976,8 @@ class EnergyCostCalculator:
                     * community_to_storage
                 )
 
-            if not self.rented_storage:
-                continue
-
-            # grid fee from community to home
+            # grid fee from community to home; this flow never touches the storage,
+            # so it is charged regardless of who owns the storage
             community_to_home = sum(
                 self.__community_flow_value__(
                     "community_to_home",
