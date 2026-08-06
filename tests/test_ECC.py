@@ -7,6 +7,7 @@ import logging
 
 import numpy as np
 import pandas as pd
+import plotly.graph_objects as go
 import pytest
 
 from battery_utility_calculator.energy_costs_calculator import (
@@ -782,6 +783,63 @@ def test_storage_usage_kpis_and_summary_plot():
 
     fig = calc.plot_storage_usage_summary(show=False)
     assert fig is not None
+
+
+def _optimized_calc_with_activity() -> EnergyCostCalculator:
+    """Calculator whose optimum uses PV, storage and every market."""
+    calc = EnergyCostCalculator(
+        storage=Storage(
+            id=0, c_rate=1, volume=2, charge_efficiency=1, discharge_efficiency=1
+        ),
+        eeg_prices=pd.Series([0, 0, 1, 0], index=idx_4),
+        wholesale_market_prices=pd.Series([1, 2, 3, 1], index=idx_4),
+        community_market_prices={"aachen": pd.Series([1, 2, 1, 2], index=idx_4)},
+        supplier_prices=pd.Series([0.3, 0.4, 0.4, 0.3], index=idx_4),
+        solar_generation=pd.Series([2, 1, 0, 0], index=idx_4),
+        demand=pd.Series([1, 1, 2, 1], index=idx_4),
+    )
+    calc.optimize(solver="appsi_highs")
+    return calc
+
+
+def test_plot_storage_charge_timeseries_returns_figure():
+    calc = _optimized_calc_with_activity()
+
+    fig = calc.plot_storage_charge_timeseries(show=False)
+
+    # the y column comes from melt(value_name="kWh"); a mismatch here used to
+    # raise ValueError before the figure was ever built
+    assert fig.layout.yaxis.title.text == "kWh"
+    assert len(fig.data) > 0
+
+    charge_df = calc.get_storage_charge_timeseries_df()
+    plotted = {trace.name: np.asarray(trace.y, dtype=float) for trace in fig.data}
+    assert np.isclose(
+        sum(values.sum() for values in plotted.values()),
+        charge_df.sum().sum(),
+    )
+
+
+@pytest.mark.parametrize(
+    "plot_method",
+    [
+        "plot_energy_flows",
+        "plot_demand_coverage",
+        "plot_solar_generation",
+        "plot_storage_soc_timeseries",
+        "plot_storage_charge_timeseries",
+        "plot_prices",
+        "plot_supplier_costs",
+        "plot_storage_usage_summary",
+    ],
+)
+def test_plot_methods_build_a_figure(plot_method):
+    calc = _optimized_calc_with_activity()
+
+    fig = getattr(calc, plot_method)(show=False)
+
+    assert isinstance(fig, go.Figure)
+    assert len(fig.data) > 0
 
 
 def test_storage_usage_kpis_zero_volume_storage():

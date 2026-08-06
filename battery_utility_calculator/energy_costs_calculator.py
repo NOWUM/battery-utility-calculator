@@ -1663,7 +1663,9 @@ class EnergyCostCalculator:
 
         df = df.drop(columns=[col for col in df.columns if (df[col] == 0).all()])
         long = df.melt(id_vars=[df.columns[0]], var_name="Use case", value_name="kWh")
-        fig = px.line(long, x="t", y="kW", color="Use case", title="Charge / Discharge")
+        fig = px.line(
+            long, x="t", y="kWh", color="Use case", title="Charge / Discharge"
+        )
 
         if show:
             fig.show()
