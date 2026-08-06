@@ -56,7 +56,6 @@ def calculate_storage_worth(
     allow_community_market_arbitrage: bool = True,
     allow_pv_to_community: bool = True,
     allow_storage_to_community: bool = True,
-    allow_wholesale_to_home: bool = False,
     allow_pv_to_wholesale: bool = False,
     allow_wholesale_to_storage: bool = True,
     allow_storage_to_wholesale: bool = True,
@@ -93,7 +92,6 @@ def calculate_storage_worth(
         allow_community_market_arbitrage (bool, optional): Allow community round-trip arbitrage via the community storage bucket. Defaults to True.
         allow_pv_to_community (bool, optional): Wether to allow selling PV energy to community. Defaults to True.
         allow_storage_to_community (bool, optional): Allow discharging the community storage bucket to the community market. Defaults to True.
-        allow_wholesale_to_home (bool, optional): Allow wholesale imports directly to home. Defaults to False.
         allow_pv_to_wholesale (bool, optional): Allow direct PV export to wholesale. Defaults to False.
         allow_wholesale_to_storage (bool, optional): Allow wholesale imports into storage. Defaults to True.
         allow_storage_to_wholesale (bool, optional): Wether to allow selling from storage to wholesale market. Defaults to True.
@@ -131,7 +129,6 @@ def calculate_storage_worth(
         allow_community_market_arbitrage=allow_community_market_arbitrage,
         allow_pv_to_community=allow_pv_to_community,
         allow_storage_to_community=allow_storage_to_community,
-        allow_wholesale_to_home=allow_wholesale_to_home,
         allow_pv_to_wholesale=allow_pv_to_wholesale,
         allow_wholesale_to_storage=allow_wholesale_to_storage,
         allow_storage_to_wholesale=allow_storage_to_wholesale,
@@ -163,7 +160,6 @@ def calculate_storage_worth(
         allow_community_market_arbitrage=allow_community_market_arbitrage,
         allow_pv_to_community=allow_pv_to_community,
         allow_storage_to_community=allow_storage_to_community,
-        allow_wholesale_to_home=allow_wholesale_to_home,
         allow_pv_to_wholesale=allow_pv_to_wholesale,
         allow_wholesale_to_storage=allow_wholesale_to_storage,
         allow_storage_to_wholesale=allow_storage_to_wholesale,
@@ -225,7 +221,6 @@ def calculate_multiple_storage_worth(
     allow_community_market_arbitrage: bool = True,
     allow_pv_to_community: bool = True,
     allow_storage_to_community: bool = True,
-    allow_wholesale_to_home: bool = False,
     allow_pv_to_wholesale: bool = False,
     allow_wholesale_to_storage: bool = True,
     allow_storage_to_wholesale: bool = True,
@@ -262,7 +257,6 @@ def calculate_multiple_storage_worth(
         allow_community_market_arbitrage (bool, optional): Allow community round-trip arbitrage via the community storage bucket. Defaults to True.
         allow_pv_to_community (bool, optional): Wether to allow selling PV energy to community. Defaults to True.
         allow_storage_to_community (bool, optional): Allow discharging the community storage bucket to the community market. Defaults to True.
-        allow_wholesale_to_home (bool, optional): Allow wholesale imports directly to home. Defaults to False.
         allow_pv_to_wholesale (bool, optional): Allow direct PV export to wholesale. Defaults to False.
         allow_wholesale_to_storage (bool, optional): Allow wholesale imports into storage. Defaults to True.
         allow_storage_to_wholesale (bool, optional): Wether to allow selling from storage to wholesale market. Defaults to True.
@@ -317,7 +311,6 @@ def calculate_multiple_storage_worth(
         allow_community_market_arbitrage=allow_community_market_arbitrage,
         allow_pv_to_community=allow_pv_to_community,
         allow_storage_to_community=allow_storage_to_community,
-        allow_wholesale_to_home=allow_wholesale_to_home,
         allow_pv_to_wholesale=allow_pv_to_wholesale,
         allow_wholesale_to_storage=allow_wholesale_to_storage,
         allow_storage_to_wholesale=allow_storage_to_wholesale,
@@ -394,7 +387,6 @@ def calculate_multiple_storage_worth(
             allow_community_market_arbitrage=allow_community_market_arbitrage,
             allow_pv_to_community=allow_pv_to_community,
             allow_storage_to_community=allow_storage_to_community,
-            allow_wholesale_to_home=allow_wholesale_to_home,
             allow_pv_to_wholesale=allow_pv_to_wholesale,
             allow_wholesale_to_storage=allow_wholesale_to_storage,
             allow_storage_to_wholesale=allow_storage_to_wholesale,
@@ -470,7 +462,6 @@ def calculate_multiple_storage_worth_by_location(
     allow_community_market_arbitrage: bool = True,
     allow_pv_to_community: bool = True,
     allow_storage_to_community: bool = True,
-    allow_wholesale_to_home: bool = False,
     allow_pv_to_wholesale: bool = False,
     allow_wholesale_to_storage: bool = True,
     allow_storage_to_wholesale: bool = True,
@@ -510,7 +501,6 @@ def calculate_multiple_storage_worth_by_location(
             allow_community_market_arbitrage=allow_community_market_arbitrage,
             allow_pv_to_community=allow_pv_to_community,
             allow_storage_to_community=allow_storage_to_community,
-            allow_wholesale_to_home=allow_wholesale_to_home,
             allow_pv_to_wholesale=allow_pv_to_wholesale,
             allow_wholesale_to_storage=allow_wholesale_to_storage,
             allow_storage_to_wholesale=allow_storage_to_wholesale,

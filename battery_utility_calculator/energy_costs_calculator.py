@@ -62,7 +62,6 @@ class EnergyCostCalculator:
         allow_pv_to_community: bool = True,
         is_rented_storage: bool = False,
         allow_storage_to_community: bool = True,
-        allow_wholesale_to_home: bool = False,
         allow_pv_to_wholesale: bool = False,
         allow_wholesale_to_storage: bool = True,
         allow_storage_to_wholesale: bool = True,
@@ -123,7 +122,6 @@ class EnergyCostCalculator:
         self.charge_efficiency = self.storage.charge_efficiency
         self.discharge_efficiency = self.storage.discharge_efficiency
 
-        self.allow_wholesale_to_home = allow_wholesale_to_home
         self.allow_wholesale_to_storage = allow_wholesale_to_storage
         self.allow_pv_to_wholesale = allow_pv_to_wholesale
         self.allow_storage_to_wholesale = allow_storage_to_wholesale
@@ -636,12 +634,14 @@ class EnergyCostCalculator:
             self.timesteps, rule=restrict_soc_min
         )
 
-        # storage level must be 0 at beginning
+        # the storage starts empty, so after the first timestep it can hold at most
+        # what one full charging step adds to the SOC
         def restrict_soc_start(model):
             return (
                 sum(model.storage_level[0, use] for use in self.storage_use_cases)
                 <= self.storage.volume
                 * self.storage.c_rate
+                * self.hours_per_timestep
                 * self.storage.charge_efficiency
             )
 

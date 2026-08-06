@@ -548,6 +548,38 @@ def test_ECC_soc_start():
     assert round(soc_df.loc["2025-01-01 00:00:00", "soc_home"], 1) == 0.5
 
 
+def test_ECC_soc_start_scales_with_hours_per_timestep():
+    # one 4h step charges up to c_rate * volume * 4 kWh, so the storage can be
+    # filled completely despite the 0.9 charge efficiency
+    calculator = EnergyCostCalculator(
+        storage=Storage(
+            id=0, c_rate=1, volume=10, charge_efficiency=0.9, discharge_efficiency=1
+        ),
+        eeg_prices=pd.Series([0, 0], index=idx_2),
+        wholesale_market_prices=pd.Series([0, 0], index=idx_2),
+        community_market_prices={"aachen": pd.Series([0, 0], index=idx_2)},
+        supplier_prices=pd.Series([0, 10], index=idx_2),
+        solar_generation=pd.Series([0, 0], index=idx_2),
+        demand=pd.Series([0, 2.5], index=idx_2),
+        hours_per_timestep=4,
+        storage_use_cases=["home"],
+        allow_community_to_home=False,
+        allow_community_to_storage=False,
+        allow_pv_to_community=False,
+        allow_storage_to_community=False,
+        allow_pv_to_wholesale=False,
+    )
+    costs = calculator.optimize(solver="appsi_highs")
+    soc_df = calculator.get_storage_soc_timeseries_df()
+    flows = calculator.get_energy_flows()
+
+    # without hours_per_timestep the bound would cap the SOC at 9 kWh and force
+    # buying the missing kWh at 10 EUR
+    assert np.isclose(soc_df["soc_home"].iloc[0], 10)
+    assert np.isclose(flows["supplier_to_home"].iloc[1], 0)
+    assert np.isclose(costs, 0, atol=1e-3)
+
+
 def test_ECC_soc_end():
     calculator = EnergyCostCalculator(
         storage=Storage(id=0, c_rate=0.5, volume=1),
