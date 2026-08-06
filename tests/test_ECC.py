@@ -10,7 +10,11 @@ import pandas as pd
 import plotly.graph_objects as go
 import pytest
 
+from battery_utility_calculator.battery_utility_calculator import (
+    DEFAULT_GRID_FEE_BETWEEN_LOCATIONS as BUC_DEFAULT_GRID_FEES,
+)
 from battery_utility_calculator.energy_costs_calculator import (
+    DEFAULT_GRID_FEE_BETWEEN_LOCATIONS,
     EnergyCostCalculator,
     Storage,
 )
@@ -29,6 +33,29 @@ def community_prices(
     if values is None:
         values = [0.0] * len(index)
     return {location: pd.Series(values, index=index) for location in locations}
+
+
+def test_default_grid_fees_are_symmetric():
+    for from_location, fees in DEFAULT_GRID_FEE_BETWEEN_LOCATIONS.items():
+        assert fees[from_location] == 0.0, f"{from_location} to itself is not free"
+        for to_location, fee in fees.items():
+            reverse = DEFAULT_GRID_FEE_BETWEEN_LOCATIONS[to_location][from_location]
+            assert fee == reverse, (
+                f"{from_location}->{to_location} is {fee} but "
+                f"{to_location}->{from_location} is {reverse}"
+            )
+
+
+def test_default_grid_fees_are_defined_for_every_location_pair():
+    locations = set(DEFAULT_GRID_FEE_BETWEEN_LOCATIONS)
+    for from_location, fees in DEFAULT_GRID_FEE_BETWEEN_LOCATIONS.items():
+        assert set(fees) == locations, f"row {from_location} is incomplete"
+
+
+def test_default_grid_fee_tables_match_across_modules():
+    # the table is duplicated; BUC passes its copy as the default argument and
+    # ECC overlays it onto its own, so a divergence would silently change fees
+    assert BUC_DEFAULT_GRID_FEES == DEFAULT_GRID_FEE_BETWEEN_LOCATIONS
 
 
 def test_ECC_baseline():

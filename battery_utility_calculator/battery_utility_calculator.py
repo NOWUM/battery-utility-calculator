@@ -27,14 +27,14 @@ DEFAULT_GRID_FEE_BETWEEN_LOCATIONS = {
     },
     "heerlen": {
         "juelich": 0.015,
-        "aachen": 0.01,
+        "aachen": 0.015,
         "heerlen": 0.0,
         "liege": 0.02,
     },
     "liege": {
         "juelich": 0.02,
-        "aachen": 0.01,
-        "heerlen": 0.015,
+        "aachen": 0.02,
+        "heerlen": 0.02,
         "liege": 0.0,
     },
 }
