@@ -451,8 +451,9 @@ class EnergyCostCalculator:
                 self.timesteps, domain=pyo.NonNegativeReals, bounds=(0, 0)
             )
 
-        # selling from storage on wholesale
-        if self.allow_storage_to_wholesale:
+        # selling from storage on wholesale; without the use case there is no SOC
+        # balance backing this flow, so it has to stay closed
+        if self.allow_storage_to_wholesale and "wholesale" in self.storage_use_cases:
             self.model.storage_to_wholesale = pyo.Var(
                 self.timesteps,
                 domain=pyo.NonNegativeReals,
@@ -464,7 +465,8 @@ class EnergyCostCalculator:
 
         # selling from storage on community
         self.__define_community_flow_var__(
-            "storage_to_community", self.allow_storage_to_community
+            "storage_to_community",
+            self.allow_storage_to_community and "community" in self.storage_use_cases,
         )
 
         # using energy from storage at home
@@ -477,8 +479,9 @@ class EnergyCostCalculator:
                 self.timesteps, domain=pyo.NonNegativeReals, bounds=(0, 0)
             )
 
-        # charging storage from wholesale market
-        if self.allow_wholesale_to_storage:
+        # charging storage from wholesale market; same reasoning as above, which
+        # matters for negative prices where charging into nowhere would pay off
+        if self.allow_wholesale_to_storage and "wholesale" in self.storage_use_cases:
             self.model.wholesale_to_storage = pyo.Var(
                 self.timesteps, domain=pyo.NonNegativeReals
             )
@@ -506,8 +509,8 @@ class EnergyCostCalculator:
             "community_to_home", self.allow_community_to_home
         )
 
-        # charging storage from supplier
-        if self.allow_supplier_to_storage:
+        # charging storage from supplier; feeds the home SOC bucket
+        if self.allow_supplier_to_storage and "home" in self.storage_use_cases:
             self.model.supplier_to_storage = pyo.Var(
                 self.timesteps, domain=pyo.NonNegativeReals
             )

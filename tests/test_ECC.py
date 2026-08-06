@@ -1322,6 +1322,101 @@ def test_ECC_local_community_to_home_stays_fee_free():
     assert np.isclose(costs, -1)
 
 
+def _no_balance_calc(**kwargs) -> EnergyCostCalculator:
+    """Storage with no PV, no demand and no supply - it cannot hold any energy."""
+    args = dict(
+        storage=Storage(
+            id=0, c_rate=1, volume=1, charge_efficiency=1, discharge_efficiency=1
+        ),
+        eeg_prices=pd.Series([0, 0, 0], index=idx_3),
+        wholesale_market_prices=pd.Series([0, 0, 0], index=idx_3),
+        community_market_prices={"aachen": pd.Series([0, 0, 0], index=idx_3)},
+        supplier_prices=pd.Series([50, 50, 50], index=idx_3),
+        solar_generation=pd.Series([0, 0, 0], index=idx_3),
+        demand=pd.Series([0, 0, 0], index=idx_3),
+        wholesale_fee=0.0,
+        allow_community_to_home=False,
+        allow_community_to_storage=False,
+        allow_pv_to_community=False,
+        allow_storage_to_community=False,
+    )
+    args.update(kwargs)
+    return EnergyCostCalculator(**args)
+
+
+def test_ECC_storage_to_wholesale_needs_its_use_case():
+    # without the wholesale SOC balance the flow would be unbacked and the model
+    # could sell energy it never stored
+    calc = _no_balance_calc(
+        storage_use_cases=["home"],
+        wholesale_market_prices=pd.Series([10, 10, 10], index=idx_3),
+        allow_storage_to_wholesale=True,
+    )
+    objective = calc.optimize(solver="appsi_highs")
+
+    sold = sum(calc.model.storage_to_wholesale[t].value for t in calc.timesteps)
+    assert np.isclose(sold, 0.0)
+    assert np.isclose(objective, 0.0)
+
+
+def test_ECC_wholesale_to_storage_needs_its_use_case():
+    # with negative prices, charging into a bucket that does not exist would pay
+    calc = _no_balance_calc(
+        storage_use_cases=["home"],
+        wholesale_market_prices=pd.Series([-10, -10, -10], index=idx_3),
+        allow_wholesale_to_storage=True,
+        allow_storage_to_wholesale=False,
+    )
+    objective = calc.optimize(solver="appsi_highs")
+
+    bought = sum(calc.model.wholesale_to_storage[t].value for t in calc.timesteps)
+    assert np.isclose(bought, 0.0)
+    assert np.isclose(objective, 0.0)
+
+
+def test_ECC_storage_to_community_needs_its_use_case():
+    calc = _no_balance_calc(
+        storage_use_cases=["home"],
+        community_market_prices={"aachen": pd.Series([10, 10, 10], index=idx_3)},
+        allow_storage_to_community=True,
+        allow_storage_to_wholesale=False,
+    )
+    objective = calc.optimize(solver="appsi_highs")
+
+    sold = sum(
+        calc.model.storage_to_community[t, "aachen"].value for t in calc.timesteps
+    )
+    assert np.isclose(sold, 0.0)
+    assert np.isclose(objective, 0.0)
+
+
+def test_ECC_supplier_to_storage_needs_the_home_use_case():
+    calc = _no_balance_calc(
+        storage_use_cases=["wholesale"],
+        supplier_prices=pd.Series([-10, -10, -10], index=idx_3),
+        allow_storage_to_wholesale=False,
+        allow_wholesale_to_storage=False,
+    )
+    objective = calc.optimize(solver="appsi_highs")
+
+    charged = sum(calc.model.supplier_to_storage[t].value for t in calc.timesteps)
+    assert np.isclose(charged, 0.0)
+    assert np.isclose(objective, 0.0)
+
+
+def test_ECC_full_use_cases_still_allow_storage_trading():
+    # the guard must not close the paths in the default configuration
+    calc = _no_balance_calc(
+        solar_generation=pd.Series([1, 0, 0], index=idx_3),
+        wholesale_market_prices=pd.Series([0, 10, 10], index=idx_3),
+        allow_storage_to_wholesale=True,
+    )
+    calc.optimize(solver="appsi_highs")
+
+    sold = sum(calc.model.storage_to_wholesale[t].value for t in calc.timesteps)
+    assert sold > 0
+
+
 def test_ECC_no_community_market_when_none_or_empty():
     common_kwargs = dict(
         storage=Storage(id=0, c_rate=1, volume=1),
