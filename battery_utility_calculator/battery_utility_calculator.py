@@ -27,14 +27,14 @@ DEFAULT_GRID_FEE_BETWEEN_LOCATIONS = {
     },
     "heerlen": {
         "juelich": 0.015,
-        "aachen": 0.01,
+        "aachen": 0.015,
         "heerlen": 0.0,
         "liege": 0.02,
     },
     "liege": {
         "juelich": 0.02,
-        "aachen": 0.01,
-        "heerlen": 0.015,
+        "aachen": 0.02,
+        "heerlen": 0.02,
         "liege": 0.0,
     },
 }
@@ -56,7 +56,6 @@ def calculate_storage_worth(
     allow_community_market_arbitrage: bool = True,
     allow_pv_to_community: bool = True,
     allow_storage_to_community: bool = True,
-    allow_wholesale_to_home: bool = False,
     allow_pv_to_wholesale: bool = False,
     allow_wholesale_to_storage: bool = True,
     allow_storage_to_wholesale: bool = True,
@@ -93,7 +92,6 @@ def calculate_storage_worth(
         allow_community_market_arbitrage (bool, optional): Allow community round-trip arbitrage via the community storage bucket. Defaults to True.
         allow_pv_to_community (bool, optional): Wether to allow selling PV energy to community. Defaults to True.
         allow_storage_to_community (bool, optional): Allow discharging the community storage bucket to the community market. Defaults to True.
-        allow_wholesale_to_home (bool, optional): Allow wholesale imports directly to home. Defaults to False.
         allow_pv_to_wholesale (bool, optional): Allow direct PV export to wholesale. Defaults to False.
         allow_wholesale_to_storage (bool, optional): Allow wholesale imports into storage. Defaults to True.
         allow_storage_to_wholesale (bool, optional): Wether to allow selling from storage to wholesale market. Defaults to True.
@@ -115,7 +113,7 @@ def calculate_storage_worth(
             ``worth`` and additional fields depending on the flags.
     """
 
-    # calculate baseline costs
+    # calculate baseline cashflow
     baseline_ecc = ECC(
         storage=baseline_storage,
         demand=demand,
@@ -131,7 +129,6 @@ def calculate_storage_worth(
         allow_community_market_arbitrage=allow_community_market_arbitrage,
         allow_pv_to_community=allow_pv_to_community,
         allow_storage_to_community=allow_storage_to_community,
-        allow_wholesale_to_home=allow_wholesale_to_home,
         allow_pv_to_wholesale=allow_pv_to_wholesale,
         allow_wholesale_to_storage=allow_wholesale_to_storage,
         allow_storage_to_wholesale=allow_storage_to_wholesale,
@@ -145,9 +142,9 @@ def calculate_storage_worth(
         discharge_penalty_per_kwh=discharge_penalty_per_kwh,
         cycle_cost_per_kwh=cycle_cost_per_kwh,
     )
-    baseline_costs = baseline_ecc.optimize(solver=solver)
+    baseline_cashflow = baseline_ecc.optimize(solver=solver)
 
-    # calculate costs for storage to calculate
+    # calculate cashflow for storage to calculate
     to_calc_ecc = ECC(
         storage=storage_to_calculate,
         demand=demand,
@@ -163,7 +160,6 @@ def calculate_storage_worth(
         allow_community_market_arbitrage=allow_community_market_arbitrage,
         allow_pv_to_community=allow_pv_to_community,
         allow_storage_to_community=allow_storage_to_community,
-        allow_wholesale_to_home=allow_wholesale_to_home,
         allow_pv_to_wholesale=allow_pv_to_wholesale,
         allow_wholesale_to_storage=allow_wholesale_to_storage,
         allow_storage_to_wholesale=allow_storage_to_wholesale,
@@ -177,10 +173,10 @@ def calculate_storage_worth(
         discharge_penalty_per_kwh=discharge_penalty_per_kwh,
         cycle_cost_per_kwh=cycle_cost_per_kwh,
     )
-    to_calc_costs = to_calc_ecc.optimize(solver=solver)
+    to_calc_cashflow = to_calc_ecc.optimize(solver=solver)
 
     # storage worth is difference between baseline and new storage
-    storage_worth = to_calc_costs - baseline_costs
+    storage_worth = to_calc_cashflow - baseline_cashflow
 
     # prepare optional outputs
     if return_charge_timeseries or return_soc_timeseries or return_cashflows:
@@ -225,7 +221,6 @@ def calculate_multiple_storage_worth(
     allow_community_market_arbitrage: bool = True,
     allow_pv_to_community: bool = True,
     allow_storage_to_community: bool = True,
-    allow_wholesale_to_home: bool = False,
     allow_pv_to_wholesale: bool = False,
     allow_wholesale_to_storage: bool = True,
     allow_storage_to_wholesale: bool = True,
@@ -262,7 +257,6 @@ def calculate_multiple_storage_worth(
         allow_community_market_arbitrage (bool, optional): Allow community round-trip arbitrage via the community storage bucket. Defaults to True.
         allow_pv_to_community (bool, optional): Wether to allow selling PV energy to community. Defaults to True.
         allow_storage_to_community (bool, optional): Allow discharging the community storage bucket to the community market. Defaults to True.
-        allow_wholesale_to_home (bool, optional): Allow wholesale imports directly to home. Defaults to False.
         allow_pv_to_wholesale (bool, optional): Allow direct PV export to wholesale. Defaults to False.
         allow_wholesale_to_storage (bool, optional): Allow wholesale imports into storage. Defaults to True.
         allow_storage_to_wholesale (bool, optional): Wether to allow selling from storage to wholesale market. Defaults to True.
@@ -277,7 +271,10 @@ def calculate_multiple_storage_worth(
         solver (str, optional): Which solver to use. Defaults to "gurobi".
 
     Returns:
-        pd.DataFrame or dict: If no return flag is set, returns DataFrame with storage parameters and worth. If any return
+        pd.DataFrame or dict: If no return flag is set, returns a DataFrame with the storage
+        parameters plus ``cashflow``, ``worth`` and ``location``. ``cashflow`` is the optimized
+        objective value, so revenues are positive and expenses negative; ``worth`` is the
+        difference to the baseline cashflow. ``location`` is the storage location. If any return
         flag is True, a dict is returned with ``results_df``
         plus the requested additional information.
     """
@@ -301,7 +298,7 @@ def calculate_multiple_storage_worth(
         msg += "IDs are used to index storages_to_calc_cashflows dictionary"
         raise ValueError(msg)
 
-    # calculate baseline costs
+    # calculate baseline cashflow
     baseline_ecc = ECC(
         storage=baseline_storage,
         demand=demand,
@@ -317,7 +314,6 @@ def calculate_multiple_storage_worth(
         allow_community_market_arbitrage=allow_community_market_arbitrage,
         allow_pv_to_community=allow_pv_to_community,
         allow_storage_to_community=allow_storage_to_community,
-        allow_wholesale_to_home=allow_wholesale_to_home,
         allow_pv_to_wholesale=allow_pv_to_wholesale,
         allow_wholesale_to_storage=allow_wholesale_to_storage,
         allow_storage_to_wholesale=allow_storage_to_wholesale,
@@ -331,7 +327,7 @@ def calculate_multiple_storage_worth(
         discharge_penalty_per_kwh=discharge_penalty_per_kwh,
         cycle_cost_per_kwh=cycle_cost_per_kwh,
     )
-    baseline_costs = baseline_ecc.optimize(solver=solver)
+    baseline_cashflow = baseline_ecc.optimize(solver=solver)
 
     if return_charge_timeseries:
         baseline_charge = baseline_ecc.get_storage_charge_timeseries_df()
@@ -340,39 +336,31 @@ def calculate_multiple_storage_worth(
     if return_cashflows:
         baseline_cashflows = baseline_ecc.get_cashflows()
 
-    df = pd.DataFrame(
-        columns=[
-            "id",
-            "c_rate",
-            "volume",
-            "charge_efficiency",
-            "discharge_efficiency",
-            "costs",
-            "worth",
-            "location",
-        ]
+    # where the storage sits, which is what the reported location refers to
+    reported_location = (
+        storage_location if storage_location is not None else my_location
     )
-    df.loc[
-        0,
-        [
-            "id",
-            "c_rate",
-            "volume",
-            "charge_efficiency",
-            "discharge_efficiency",
-            "costs",
-            "worth",
-            "location",
-        ],
-    ] = [
+
+    columns = [
+        "id",
+        "c_rate",
+        "volume",
+        "charge_efficiency",
+        "discharge_efficiency",
+        "cashflow",
+        "worth",
+        "location",
+    ]
+    df = pd.DataFrame(columns=columns)
+    df.loc[0, columns] = [
         baseline_storage.id,
         baseline_storage.c_rate,
         baseline_storage.volume,
         baseline_storage.charge_efficiency,
         baseline_storage.discharge_efficiency,
-        baseline_costs,
+        baseline_cashflow,
         0,
-        my_location,
+        reported_location,
     ]
 
     storages_charge = {}
@@ -394,7 +382,6 @@ def calculate_multiple_storage_worth(
             allow_community_market_arbitrage=allow_community_market_arbitrage,
             allow_pv_to_community=allow_pv_to_community,
             allow_storage_to_community=allow_storage_to_community,
-            allow_wholesale_to_home=allow_wholesale_to_home,
             allow_pv_to_wholesale=allow_pv_to_wholesale,
             allow_wholesale_to_storage=allow_wholesale_to_storage,
             allow_storage_to_wholesale=allow_storage_to_wholesale,
@@ -408,8 +395,8 @@ def calculate_multiple_storage_worth(
             discharge_penalty_per_kwh=discharge_penalty_per_kwh,
             cycle_cost_per_kwh=cycle_cost_per_kwh,
         )
-        costs = ecc.optimize(solver=solver)
-        storage_worth = costs - baseline_costs
+        cashflow = ecc.optimize(solver=solver)
+        storage_worth = cashflow - baseline_cashflow
 
         stor_df = pd.DataFrame()
         stor_df["id"] = [storage.id]
@@ -417,13 +404,13 @@ def calculate_multiple_storage_worth(
         stor_df["volume"] = [storage.volume]
         stor_df["charge_efficiency"] = [storage.charge_efficiency]
         stor_df["discharge_efficiency"] = [storage.discharge_efficiency]
-        stor_df["costs"] = [costs]
+        stor_df["cashflow"] = [cashflow]
         stor_df["worth"] = [storage_worth]
-        stor_df["location"] = [my_location]
+        stor_df["location"] = [reported_location]
 
         df = pd.concat([df, stor_df], ignore_index=True)
         df["worth"] = df["worth"].astype(float)
-        df["costs"] = df["costs"].astype(float)
+        df["cashflow"] = df["cashflow"].astype(float)
         df["c_rate"] = df["c_rate"].astype(float)
         df["volume"] = df["volume"].astype(float)
         df["charge_efficiency"] = df["charge_efficiency"].astype(float)
@@ -470,7 +457,6 @@ def calculate_multiple_storage_worth_by_location(
     allow_community_market_arbitrage: bool = True,
     allow_pv_to_community: bool = True,
     allow_storage_to_community: bool = True,
-    allow_wholesale_to_home: bool = False,
     allow_pv_to_wholesale: bool = False,
     allow_wholesale_to_storage: bool = True,
     allow_storage_to_wholesale: bool = True,
@@ -510,7 +496,6 @@ def calculate_multiple_storage_worth_by_location(
             allow_community_market_arbitrage=allow_community_market_arbitrage,
             allow_pv_to_community=allow_pv_to_community,
             allow_storage_to_community=allow_storage_to_community,
-            allow_wholesale_to_home=allow_wholesale_to_home,
             allow_pv_to_wholesale=allow_pv_to_wholesale,
             allow_wholesale_to_storage=allow_wholesale_to_storage,
             allow_storage_to_wholesale=allow_storage_to_wholesale,
@@ -528,12 +513,12 @@ def calculate_multiple_storage_worth_by_location(
             return_cashflows=return_cashflows,
             solver=solver,
         )
+        # the location column already reports storage_location=location
         worth_df = (
             worth_result["results_df"].copy()
             if isinstance(worth_result, dict)
             else worth_result.copy()
         )
-        worth_df["location"] = location
         rows.append(worth_df)
 
     if not rows:
@@ -544,7 +529,7 @@ def calculate_multiple_storage_worth_by_location(
                 "volume",
                 "charge_efficiency",
                 "discharge_efficiency",
-                "costs",
+                "cashflow",
                 "worth",
                 "location",
             ]
@@ -609,17 +594,11 @@ def calculate_bidding_curve(
     else:
         raise ValueError("buy_or_sell_side has to be either 'buyer' or 'seller'")
 
-    use_orig_costs = "costs" in df.columns
     numeric_cols = [col for col in df.columns if col != "location"]
 
     def _diff_to_marginal_steps(location_df: pd.DataFrame) -> pd.DataFrame:
         location_df = location_df.sort_values("volume", ascending=ascending)
-        if use_orig_costs:
-            original_costs = location_df["costs"].copy()
-        stepped = location_df.diff().dropna().reset_index(drop=True).abs()
-        if use_orig_costs:
-            stepped["costs"] = original_costs
-        return stepped
+        return location_df.diff().dropna().reset_index(drop=True).abs()
 
     if calc_per_location:
         baseline_rows = df.loc[df["worth"] == 0, numeric_cols]

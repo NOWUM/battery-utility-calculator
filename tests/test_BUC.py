@@ -279,8 +279,7 @@ def test_calculate_multiple_storage_worth():
     assert "baseline_soc_ts" in df_with_soc
     assert isinstance(df_with_soc["storages_to_calc_soc_ts"], dict)
 
-    print(worths["costs"])
-    assert (worths["costs"].round(0).values == [-2, -1, 0]).all()
+    assert (worths["cashflow"].round(0).values == [-2, -1, 0]).all()
     assert (worths["worth"].round(0).values[1:] == [1, 2]).all()
 
 
@@ -374,7 +373,7 @@ def test_calculate_multiple_storage_worth_applies_wholesale_fee_to_all_runs():
         allow_storage_to_community=False,
     )
 
-    assert float(low_fee.loc[1, "costs"]) > float(high_fee.loc[1, "costs"])
+    assert float(low_fee.loc[1, "cashflow"]) > float(high_fee.loc[1, "cashflow"])
 
 
 def test_calc_bid_curve_dtypes():
@@ -583,6 +582,73 @@ def test_calculate_storage_worth_with_my_location_pass_through():
     )
 
     assert high_fee_worth < low_fee_worth
+
+
+def test_calculate_multiple_storage_worth_reports_storage_location():
+    # the location column names where the storage sits, not where the prosumer is
+    result_df = calculate_multiple_storage_worth(
+        baseline_storage=Storage(0, 1, 0, 1),
+        storages_to_calculate=[Storage(1, 1, 1, 1)],
+        eeg_prices=pd.Series([0, 0, 0], index=idx),
+        wholesale_market_prices=pd.Series([0, 0, 0], index=idx),
+        community_market_prices={"aachen": pd.Series([0, 0, 0], index=idx)},
+        supplier_prices=pd.Series([0, 1, 1], index=idx),
+        solar_generation=pd.Series([0, 0, 0], index=idx),
+        demand=pd.Series([1, 1, 1], index=idx),
+        my_location="aachen",
+        storage_location="liege",
+        is_rented_storage=True,
+        solver="appsi_highs",
+        allow_community_to_home=False,
+        allow_community_to_storage=False,
+        allow_pv_to_community=False,
+        allow_storage_to_community=False,
+    )
+
+    assert set(result_df["location"]) == {"liege"}
+
+
+def test_calculate_multiple_storage_worth_defaults_location_to_my_location():
+    result_df = calculate_multiple_storage_worth(
+        baseline_storage=Storage(0, 1, 0, 1),
+        storages_to_calculate=[Storage(1, 1, 1, 1)],
+        eeg_prices=pd.Series([0, 0, 0], index=idx),
+        wholesale_market_prices=pd.Series([0, 0, 0], index=idx),
+        community_market_prices={"aachen": pd.Series([0, 0, 0], index=idx)},
+        supplier_prices=pd.Series([0, 1, 1], index=idx),
+        solar_generation=pd.Series([0, 0, 0], index=idx),
+        demand=pd.Series([1, 1, 1], index=idx),
+        my_location="aachen",
+        solver="appsi_highs",
+        allow_community_to_home=False,
+        allow_community_to_storage=False,
+        allow_pv_to_community=False,
+        allow_storage_to_community=False,
+    )
+
+    assert set(result_df["location"]) == {"aachen"}
+
+
+def test_bidding_curve_splits_by_reported_storage_location():
+    # a wrong location column would collapse to nunique() == 1 and silently
+    # produce one merged curve without exclusive_id
+    volumes_worth = pd.DataFrame(
+        {
+            "location": ["aachen", "aachen", "liege", "liege"],
+            "volume": [0, 1, 0, 1],
+            "worth": [0, 5, 0, 3],
+            "cashflow": [-2.0, -1.0, -2.0, -1.5],
+        }
+    )
+
+    curve = calculate_bidding_curve(
+        volumes_worth=volumes_worth, buy_or_sell_side="buyer"
+    )
+
+    assert "cashflow" not in curve.columns
+    assert set(curve["location"]) == {"aachen", "liege"}
+    assert (curve["exclusive_id"] == ["excl_1.0", "excl_1.0"]).all()
+    assert sorted(curve["marginal_price"]) == [3, 5]
 
 
 def test_calculate_multiple_storage_worth_by_location():
