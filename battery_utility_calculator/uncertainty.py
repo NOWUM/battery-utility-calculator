@@ -20,10 +20,14 @@ noise. Two properties matter for the result and are therefore explicit:
   spread of the storage worth considerably.
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
+
+# imported from the module rather than the package to avoid an import cycle
+from battery_utility_calculator.storage import Storage
 
 # the order fixes rows and columns of the correlation matrix
 UNCERTAIN_QUANTITIES = (
@@ -386,3 +390,167 @@ def sample_scenarios(
         )
 
     return scenarios
+
+
+def calculate_storage_worth_distribution(
+    baseline_storage: Storage,
+    storages_to_calculate: list[Storage],
+    scenarios: Sequence[Scenario],
+    hours_per_timestep: int | float = 1,
+    storage_use_cases: list[str] = ["eeg", "wholesale", "community", "home"],
+    allow_community_to_home: bool = True,
+    allow_community_to_storage: bool = True,
+    allow_community_market_arbitrage: bool = True,
+    allow_pv_to_community: bool = True,
+    allow_storage_to_community: bool = True,
+    allow_pv_to_wholesale: bool = False,
+    allow_wholesale_to_storage: bool = True,
+    allow_storage_to_wholesale: bool = True,
+    wholesale_fee: float = 0.3,
+    my_location: str = "aachen",
+    grid_fee_between_locations: dict[str, dict[str, float]] | None = None,
+    storage_location: str | None = None,
+    is_rented_storage: bool = False,
+    eeg_eligible: bool = True,
+    goal: str = "max_cashflow",
+    discharge_penalty_per_kwh: float = 1e-6,
+    cycle_cost_per_kwh: float = 0.0,
+    solver: str = "gurobi",
+) -> pd.DataFrame:
+    """Calculate the storage worth once per scenario (wait-and-see).
+
+    Each scenario is optimized on its own, which means the optimizer knows that
+    scenario's future exactly. The spread of the result therefore describes how
+    much the worth varies across possible futures - it is not the worth to an
+    operator who has to decide without knowing the future, and the mean is
+    optimistically biased.
+
+    Args:
+        baseline_storage: The baseline storage to compare against.
+        storages_to_calculate: Storages to evaluate in every scenario.
+        scenarios: Scenarios to run, e.g. from :func:`sample_scenarios`.
+        solver: Which solver to use. Defaults to "gurobi".
+
+    All remaining arguments are passed to ``calculate_multiple_storage_worth``
+    unchanged; the timeseries come from each scenario.
+
+    Returns:
+        One row per scenario and storage, including the baseline row of every
+        scenario, with the columns of ``calculate_multiple_storage_worth`` plus a
+        ``scenario`` column holding the index within ``scenarios``.
+
+    Raises:
+        ValueError: If ``scenarios`` is empty.
+        TypeError: If an entry of ``scenarios`` is not a :class:`Scenario`.
+    """
+    # imported here because battery_utility_calculator imports this module
+    from battery_utility_calculator.battery_utility_calculator import (
+        calculate_multiple_storage_worth,
+    )
+
+    if len(scenarios) == 0:
+        raise ValueError("scenarios must not be empty.")
+    for position, scenario in enumerate(scenarios):
+        if not isinstance(scenario, Scenario):
+            msg = f"scenarios[{position}] has to be a Scenario, got {type(scenario).__name__}."
+            raise TypeError(msg)
+
+    per_scenario = []
+    for position, scenario in enumerate(scenarios):
+        worth_df = calculate_multiple_storage_worth(
+            baseline_storage=baseline_storage,
+            storages_to_calculate=storages_to_calculate,
+            **scenario.to_ecc_kwargs(),
+            hours_per_timestep=hours_per_timestep,
+            storage_use_cases=storage_use_cases,
+            allow_community_to_home=allow_community_to_home,
+            allow_community_to_storage=allow_community_to_storage,
+            allow_community_market_arbitrage=allow_community_market_arbitrage,
+            allow_pv_to_community=allow_pv_to_community,
+            allow_storage_to_community=allow_storage_to_community,
+            allow_pv_to_wholesale=allow_pv_to_wholesale,
+            allow_wholesale_to_storage=allow_wholesale_to_storage,
+            allow_storage_to_wholesale=allow_storage_to_wholesale,
+            wholesale_fee=wholesale_fee,
+            my_location=my_location,
+            grid_fee_between_locations=grid_fee_between_locations,
+            storage_location=storage_location,
+            is_rented_storage=is_rented_storage,
+            eeg_eligible=eeg_eligible,
+            goal=goal,
+            discharge_penalty_per_kwh=discharge_penalty_per_kwh,
+            cycle_cost_per_kwh=cycle_cost_per_kwh,
+            solver=solver,
+        )
+        worth_df.insert(0, "scenario", position)
+        per_scenario.append(worth_df)
+
+    return pd.concat(per_scenario, ignore_index=True)
+
+
+def _quantile_column(quantile: float) -> str:
+    percent = quantile * 100
+    if float(percent).is_integer():
+        return f"worth_q{int(percent):02d}"
+    return f"worth_q{percent:g}"
+
+
+def summarize_worth_distribution(
+    worth_distribution: pd.DataFrame,
+    quantiles: Sequence[float] = (0.05, 0.5, 0.95),
+) -> pd.DataFrame:
+    """Aggregate the per-scenario worths into one row per storage.
+
+    Args:
+        worth_distribution: Output of :func:`calculate_storage_worth_distribution`.
+        quantiles: Quantiles of the worth to report, each within [0, 1].
+
+    Returns:
+        One row per storage configuration with ``n_scenarios``, ``worth_mean``,
+        ``worth_std``, ``worth_min``, ``worth_max``, ``cashflow_mean`` and one
+        column per requested quantile, e.g. ``worth_q05``.
+
+    Raises:
+        KeyError: If a required column is missing.
+        ValueError: If a quantile lies outside [0, 1].
+    """
+    required = {"scenario", "worth", "cashflow", "volume"}
+    missing = required - set(worth_distribution.columns)
+    if missing:
+        msg = f"worth_distribution is missing the columns {sorted(missing)}."
+        raise KeyError(msg)
+
+    for quantile in quantiles:
+        if not 0.0 <= quantile <= 1.0:
+            msg = f"Quantiles have to lie within [0, 1], got {quantile}."
+            raise ValueError(msg)
+
+    group_columns = [
+        column
+        for column in (
+            "id",
+            "c_rate",
+            "volume",
+            "charge_efficiency",
+            "discharge_efficiency",
+            "location",
+        )
+        if column in worth_distribution.columns
+    ]
+    grouped = worth_distribution.groupby(group_columns, sort=False, dropna=False)
+
+    summary = grouped.agg(
+        n_scenarios=("scenario", "nunique"),
+        worth_mean=("worth", "mean"),
+        worth_std=("worth", "std"),
+        worth_min=("worth", "min"),
+        worth_max=("worth", "max"),
+        cashflow_mean=("cashflow", "mean"),
+    )
+    for quantile in quantiles:
+        summary[_quantile_column(quantile)] = grouped["worth"].quantile(quantile)
+
+    # a single scenario has no spread, which pandas reports as NaN
+    summary["worth_std"] = summary["worth_std"].fillna(0.0)
+
+    return summary.reset_index()

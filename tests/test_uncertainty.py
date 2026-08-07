@@ -6,11 +6,14 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from battery_utility_calculator import Storage
 from battery_utility_calculator.uncertainty import (
     DEFAULT_PERSISTENCE_HOURS,
     Scenario,
     build_correlation_matrix,
+    calculate_storage_worth_distribution,
     sample_scenarios,
+    summarize_worth_distribution,
 )
 
 idx_long = pd.date_range("2025-01-01", freq="h", periods=240)
@@ -352,3 +355,175 @@ def test_sample_scenarios_without_community_market():
     scenarios = sample_scenarios(**inputs, n_scenarios=3, seed=1)
 
     assert all(scenario.community_market_prices is None for scenario in scenarios)
+
+
+def worth_inputs(index: pd.DatetimeIndex) -> dict:
+    """Base case where a storage has a real value: cheap early, expensive later."""
+    return dict(
+        demand=pd.Series(1.0, index=index),
+        solar_generation=pd.Series(0.0, index=index),
+        supplier_prices=pd.Series([0.0, 1.0, 1.0], index=index),
+        eeg_prices=pd.Series(0.0, index=index),
+        wholesale_market_prices=pd.Series(0.0, index=index),
+        community_market_prices=None,
+    )
+
+
+def worth_scenarios(n_scenarios: int = 12, seed: int = 3) -> list[Scenario]:
+    return sample_scenarios(
+        **worth_inputs(idx_3),
+        n_scenarios=n_scenarios,
+        relative_std={"supplier_prices": 0.25, "demand": 0.15},
+        seed=seed,
+    )
+
+
+def run_distribution(scenarios: list[Scenario], **kwargs) -> pd.DataFrame:
+    return calculate_storage_worth_distribution(
+        baseline_storage=Storage(0, 1, 0, 1, 1),
+        storages_to_calculate=[Storage(1, 1, 1, 1, 1), Storage(2, 1, 2, 1, 1)],
+        scenarios=scenarios,
+        solver="appsi_highs",
+        allow_community_to_home=False,
+        allow_community_to_storage=False,
+        allow_pv_to_community=False,
+        allow_storage_to_community=False,
+        **kwargs,
+    )
+
+
+def test_worth_distribution_has_a_row_per_scenario_and_storage():
+    scenarios = worth_scenarios(n_scenarios=5)
+
+    distribution = run_distribution(scenarios)
+
+    # baseline plus two storages in each of the five scenarios
+    assert len(distribution) == 5 * 3
+    assert sorted(distribution["scenario"].unique()) == [0, 1, 2, 3, 4]
+    assert set(distribution["volume"]) == {0.0, 1.0, 2.0}
+    assert distribution.columns[0] == "scenario"
+    for column in ("id", "volume", "cashflow", "worth", "location"):
+        assert column in distribution.columns
+
+
+def test_worth_distribution_keeps_the_baseline_at_zero_worth():
+    distribution = run_distribution(worth_scenarios(n_scenarios=6))
+
+    baseline = distribution[distribution["volume"] == 0.0]
+    assert len(baseline) == 6
+    assert np.allclose(baseline["worth"], 0.0)
+
+
+def test_worth_distribution_actually_varies_between_scenarios():
+    distribution = run_distribution(worth_scenarios(n_scenarios=15))
+
+    worths = distribution.loc[distribution["volume"] == 1.0, "worth"]
+    assert worths.std() > 0
+    # a bigger storage is never worth less than a smaller one
+    for scenario in distribution["scenario"].unique():
+        rows = distribution[distribution["scenario"] == scenario].set_index("volume")
+        assert rows.loc[2.0, "worth"] >= rows.loc[1.0, "worth"] - 1e-9
+
+
+def test_worth_distribution_is_deterministic_for_a_fixed_seed():
+    first = run_distribution(worth_scenarios(n_scenarios=4, seed=9))
+    again = run_distribution(worth_scenarios(n_scenarios=4, seed=9))
+
+    assert np.allclose(first["worth"], again["worth"])
+
+
+def test_worth_distribution_passes_options_through():
+    scenarios = worth_scenarios(n_scenarios=4)
+
+    without_cost = run_distribution(scenarios)
+    with_cost = run_distribution(scenarios, cycle_cost_per_kwh=0.2)
+
+    without = without_cost.loc[without_cost["volume"] == 1.0, "worth"].to_numpy()
+    with_ = with_cost.loc[with_cost["volume"] == 1.0, "worth"].to_numpy()
+    assert (with_ < without).all()
+
+
+def test_worth_distribution_reports_the_storage_location():
+    scenarios = worth_scenarios(n_scenarios=3)
+
+    distribution = run_distribution(
+        scenarios,
+        my_location="aachen",
+        storage_location="liege",
+        is_rented_storage=True,
+    )
+
+    assert set(distribution["location"]) == {"liege"}
+
+
+def test_worth_distribution_rejects_empty_and_wrong_types():
+    with pytest.raises(ValueError, match="must not be empty"):
+        run_distribution([])
+
+    with pytest.raises(TypeError, match="has to be a Scenario"):
+        run_distribution(["not a scenario"])
+
+
+def test_summarize_worth_distribution_aggregates_per_storage():
+    distribution = run_distribution(worth_scenarios(n_scenarios=20))
+
+    summary = summarize_worth_distribution(distribution)
+
+    assert len(summary) == 3
+    assert (summary["n_scenarios"] == 20).all()
+    for column in (
+        "worth_mean",
+        "worth_std",
+        "worth_min",
+        "worth_max",
+        "cashflow_mean",
+    ):
+        assert column in summary.columns
+    assert list(summary["volume"]) == [0.0, 1.0, 2.0]
+
+    for _, row in summary.iterrows():
+        assert row["worth_min"] <= row["worth_q05"] <= row["worth_q50"]
+        assert row["worth_q50"] <= row["worth_q95"] <= row["worth_max"]
+        assert row["worth_min"] <= row["worth_mean"] <= row["worth_max"]
+
+
+def test_summarize_worth_distribution_matches_manual_quantiles():
+    distribution = run_distribution(worth_scenarios(n_scenarios=20))
+
+    summary = summarize_worth_distribution(distribution, quantiles=[0.1, 0.9])
+    one_kwh = distribution.loc[distribution["volume"] == 1.0, "worth"]
+    row = summary[summary["volume"] == 1.0].iloc[0]
+
+    assert np.isclose(row["worth_mean"], one_kwh.mean())
+    assert np.isclose(row["worth_std"], one_kwh.std())
+    assert np.isclose(row["worth_q10"], one_kwh.quantile(0.1))
+    assert np.isclose(row["worth_q90"], one_kwh.quantile(0.9))
+
+
+def test_summarize_worth_distribution_names_fractional_quantiles():
+    distribution = run_distribution(worth_scenarios(n_scenarios=6))
+
+    summary = summarize_worth_distribution(distribution, quantiles=[0.025, 0.5])
+
+    assert "worth_q2.5" in summary.columns
+    assert "worth_q50" in summary.columns
+
+
+def test_summarize_worth_distribution_handles_a_single_scenario():
+    distribution = run_distribution(worth_scenarios(n_scenarios=1))
+
+    summary = summarize_worth_distribution(distribution)
+
+    assert (summary["n_scenarios"] == 1).all()
+    # pandas reports NaN for the std of one sample
+    assert np.allclose(summary["worth_std"], 0.0)
+
+
+def test_summarize_worth_distribution_validates_input():
+    distribution = run_distribution(worth_scenarios(n_scenarios=3))
+
+    with pytest.raises(ValueError, match=r"within \[0, 1\]"):
+        summarize_worth_distribution(distribution, quantiles=[1.5])
+
+    with pytest.raises(KeyError, match="missing the columns"):
+        summarize_worth_distribution(distribution.drop(columns="worth"))
