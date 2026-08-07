@@ -29,10 +29,18 @@ def flat_inputs(index: pd.DatetimeIndex) -> dict:
     )
 
 
-def deviations(scenarios: list[Scenario], attribute: str) -> np.ndarray:
-    """Flattened deviations from the first scenario's base level per quantity."""
+def deviations(
+    scenarios: list[Scenario], attribute: str, location: str = "aachen"
+) -> np.ndarray:
+    """Flattened deviations from the base level of one quantity."""
+
+    def series(scenario: Scenario) -> pd.Series:
+        value = getattr(scenario, attribute)
+        # community_market_prices is keyed by location
+        return value[location] if isinstance(value, dict) else value
+
     stacked = np.array(
-        [getattr(scenario, attribute).to_numpy(dtype=float) for scenario in scenarios]
+        [series(scenario).to_numpy(dtype=float) for scenario in scenarios]
     )
     return (stacked - stacked.mean()).ravel()
 
@@ -115,7 +123,8 @@ def test_price_noise_is_absolute_so_negative_prices_stay_disturbed():
     assert np.isclose(spread, 0.30 * 0.05, rtol=0.15)
 
 
-def test_wholesale_and_solar_are_negatively_correlated():
+def test_wholesale_and_solar_are_weakly_negatively_correlated():
+    # only weakly: wind can depress prices without any sunshine
     scenarios = sample_scenarios(**flat_inputs(idx_long), n_scenarios=120, seed=2)
 
     correlation = np.corrcoef(
@@ -123,10 +132,10 @@ def test_wholesale_and_solar_are_negatively_correlated():
         deviations(scenarios, "solar_generation"),
     )[0, 1]
 
-    assert np.isclose(correlation, -0.41, atol=0.06)
+    assert np.isclose(correlation, -0.20, atol=0.06)
 
 
-def test_wholesale_and_supplier_are_positively_correlated():
+def test_supplier_follows_wholesale_exactly():
     scenarios = sample_scenarios(**flat_inputs(idx_long), n_scenarios=120, seed=2)
 
     correlation = np.corrcoef(
@@ -134,7 +143,58 @@ def test_wholesale_and_supplier_are_positively_correlated():
         deviations(scenarios, "supplier_prices"),
     )[0, 1]
 
-    assert np.isclose(correlation, 0.7, atol=0.06)
+    assert np.isclose(correlation, 1.0, atol=1e-6)
+
+
+def test_supplier_inherits_every_wholesale_correlation():
+    # with a perfect wholesale/supplier coupling the supplier disturbance IS the
+    # wholesale disturbance, so it cannot have relationships of its own
+    scenarios = sample_scenarios(**flat_inputs(idx_long), n_scenarios=120, seed=2)
+
+    for other in ("solar_generation", "community_market_prices", "demand"):
+        against_wholesale = np.corrcoef(
+            deviations(scenarios, "wholesale_market_prices"),
+            deviations(scenarios, other),
+        )[0, 1]
+        against_supplier = np.corrcoef(
+            deviations(scenarios, "supplier_prices"),
+            deviations(scenarios, other),
+        )[0, 1]
+        assert np.isclose(against_wholesale, against_supplier, atol=1e-6), other
+
+
+def test_community_is_nearly_independent_of_wholesale():
+    scenarios = sample_scenarios(**flat_inputs(idx_long), n_scenarios=120, seed=2)
+
+    correlation = np.corrcoef(
+        deviations(scenarios, "wholesale_market_prices"),
+        deviations(scenarios, "community_market_prices"),
+    )[0, 1]
+
+    assert np.isclose(correlation, 0.10, atol=0.06)
+
+
+def test_community_reacts_strongly_to_local_pv():
+    scenarios = sample_scenarios(**flat_inputs(idx_long), n_scenarios=120, seed=2)
+
+    correlation = np.corrcoef(
+        deviations(scenarios, "community_market_prices"),
+        deviations(scenarios, "solar_generation"),
+    )[0, 1]
+
+    assert np.isclose(correlation, -0.50, atol=0.06)
+
+
+def test_default_correlations_are_sampleable():
+    # a perfect pair makes the matrix singular; the eigendecomposition has to
+    # cope with it where a Cholesky factorisation would fail
+    matrix = build_correlation_matrix()
+    smallest = float(np.linalg.eigvalsh(matrix).min())
+
+    assert smallest > -1e-8
+    assert np.isclose(smallest, 0.0, atol=1e-8)
+    with pytest.raises(np.linalg.LinAlgError):
+        np.linalg.cholesky(matrix)
 
 
 def test_demand_is_uncorrelated_with_prices_by_default():

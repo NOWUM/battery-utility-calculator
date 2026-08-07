@@ -11,10 +11,10 @@ scenario and the resulting spread is evaluated (wait-and-see).
 Scenarios are drawn from the deterministic base timeseries by adding correlated
 noise. Two properties matter for the result and are therefore explicit:
 
-* Cross correlation. PV generation and wholesale prices move against each other
-  (merit order effect), while retail and community prices follow the exchange.
-  Sampling the series independently would create combinations that do not occur
-  and would misstate the storage worth.
+* Cross correlation. Retail prices follow the exchange, PV weighs on it, and the
+  community market reacts mostly to local PV feed-in. Sampling the series
+  independently would create combinations that do not occur and would misstate
+  the storage worth. See ``DEFAULT_CORRELATIONS`` for the assumed structure.
 * Persistence. Forecast errors last - a cloudy day stays cloudy. Independent
   noise per timestep would average out over the horizon and understate the
   spread of the storage worth considerably.
@@ -54,23 +54,32 @@ DEFAULT_RELATIVE_STD = {
 
 # Pairwise correlations; unlisted pairs default to 0.0.
 #
-# These are not chosen pair by pair. Once retail and community prices are tied
-# to the exchange and PV runs against it, the remaining pairs are no longer free
-# - demanding "supplier follows wholesale at 0.7" and "supplier is uncorrelated
-# with PV" at the same time describes no distribution at all. The set below is
-# therefore derived from loadings on one common market factor,
+# Reasoning behind the values:
 #
-#     wholesale 0.90, community 0.89, supplier 0.78, solar -0.45, demand 0.00
+# * Retail prices track the exchange one to one, so their disturbance is the same
+#   disturbance. As a consequence supplier_prices is not free to have its own
+#   relationship with anything else - it inherits every correlation of
+#   wholesale_market_prices. The two supplier entries below are therefore not
+#   independent choices, they are copies of the wholesale row, and changing one
+#   without the other makes the matrix unsamplable.
+# * PV weighs on the exchange price, but only weakly: wind can depress prices just
+#   as well on an overcast day, so a low price is a poor indicator of sunshine.
+# * The community market is driven by local PV feed-in rather than by the
+#   exchange - hence nearly independent of wholesale, but clearly negative
+#   against solar_generation.
 #
-# so that correlation(a, b) = loading(a) * loading(b). Adjust the loadings rather
-# than individual pairs, otherwise build_correlation_matrix will reject the result.
+# Note that a single common market factor cannot produce this structure: tying
+# supplier to wholesale at 1.0 would force correlation(solar, community) to be
+# the product of their wholesale correlations, about -0.02 instead of -0.50. The
+# matrix is therefore given directly and checked in build_correlation_matrix.
 DEFAULT_CORRELATIONS = {
-    ("wholesale_market_prices", "supplier_prices"): 0.70,
-    ("wholesale_market_prices", "community_market_prices"): 0.80,
-    ("wholesale_market_prices", "solar_generation"): -0.41,
-    ("supplier_prices", "community_market_prices"): 0.69,
-    ("supplier_prices", "solar_generation"): -0.35,
-    ("community_market_prices", "solar_generation"): -0.40,
+    ("wholesale_market_prices", "supplier_prices"): 1.00,
+    ("wholesale_market_prices", "solar_generation"): -0.20,
+    ("wholesale_market_prices", "community_market_prices"): 0.10,
+    # forced by the perfect wholesale/supplier coupling above
+    ("supplier_prices", "solar_generation"): -0.20,
+    ("supplier_prices", "community_market_prices"): 0.10,
+    ("community_market_prices", "solar_generation"): -0.50,
 }
 
 DEFAULT_PERSISTENCE_HOURS = 12.0
