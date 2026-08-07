@@ -6,13 +6,16 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from battery_utility_calculator import Storage
+from battery_utility_calculator import Storage, calculate_bidding_curve
 from battery_utility_calculator.uncertainty import (
     DEFAULT_PERSISTENCE_HOURS,
     Scenario,
     build_correlation_matrix,
+    calculate_bidding_curve_distribution,
+    calculate_risk_adjusted_bidding_curve,
     calculate_storage_worth_distribution,
     sample_scenarios,
+    summarize_bidding_curve,
     summarize_worth_distribution,
 )
 
@@ -527,3 +530,199 @@ def test_summarize_worth_distribution_validates_input():
 
     with pytest.raises(KeyError, match="missing the columns"):
         summarize_worth_distribution(distribution.drop(columns="worth"))
+
+
+idx_24 = pd.date_range("2025-06-01", freq="h", periods=24)
+
+# self-consumption case: buying costs 0.32, feeding in earns 0.08, so shifting PV
+# into the evening is worth the 0.24 spread. No community market and no storage
+# trading, which makes the value saturate once the evening load is covered.
+SELF_CONSUMPTION_OPTIONS = dict(
+    storage_use_cases=["home", "eeg"],
+    allow_storage_to_wholesale=False,
+    allow_wholesale_to_storage=False,
+    allow_pv_to_wholesale=False,
+    allow_community_to_home=False,
+    allow_community_to_storage=False,
+    allow_pv_to_community=False,
+    allow_storage_to_community=False,
+)
+
+
+def self_consumption_scenarios(n_scenarios: int = 12, seed: int = 42) -> list[Scenario]:
+    hours = np.arange(24)
+    return sample_scenarios(
+        demand=pd.Series(0.4 + 0.5 * np.exp(-((hours - 19) ** 2) / 8), index=idx_24),
+        solar_generation=pd.Series(
+            np.clip(4 * np.sin((hours - 6) * np.pi / 12), 0, None), index=idx_24
+        ),
+        supplier_prices=pd.Series(0.32, index=idx_24),
+        eeg_prices=pd.Series(0.08, index=idx_24),
+        wholesale_market_prices=pd.Series(0.09, index=idx_24),
+        community_market_prices=None,
+        n_scenarios=n_scenarios,
+        hours_per_timestep=1,
+        seed=seed,
+    )
+
+
+def self_consumption_distribution(
+    n_scenarios: int = 12, seed: int = 42
+) -> pd.DataFrame:
+    return calculate_storage_worth_distribution(
+        baseline_storage=Storage(0, 1, 0),
+        storages_to_calculate=[
+            Storage(1, 1, 1),
+            Storage(2, 1, 2),
+            Storage(3, 1, 4),
+            Storage(4, 1, 8),
+        ],
+        scenarios=self_consumption_scenarios(n_scenarios, seed),
+        solver="appsi_highs",
+        **SELF_CONSUMPTION_OPTIONS,
+    )
+
+
+def test_self_consumption_case_has_diminishing_returns():
+    # the premise of the bidding curve: without it every step would be priced
+    # the same and the curve would carry no information
+    summary = summarize_worth_distribution(self_consumption_distribution())
+    summary = summary[summary["volume"] > 0].sort_values("volume")
+
+    worth_per_kwh = summary["worth_mean"] / summary["volume"]
+    assert worth_per_kwh.is_monotonic_decreasing
+    assert worth_per_kwh.iloc[-1] < worth_per_kwh.iloc[0]
+
+
+def test_bidding_curve_distribution_has_one_curve_per_scenario():
+    distribution = self_consumption_distribution(n_scenarios=8)
+
+    curves = calculate_bidding_curve_distribution(distribution, "buyer")
+
+    assert sorted(curves["scenario"].unique()) == list(range(8))
+    steps_per_scenario = curves.groupby("scenario").size()
+    assert (steps_per_scenario == steps_per_scenario.iloc[0]).all()
+    assert "marginal_price" in curves.columns
+    assert "cumulative_volume" in curves.columns
+
+
+def test_bidding_curve_distribution_matches_a_single_scenario_curve():
+    distribution = self_consumption_distribution(n_scenarios=3)
+
+    curves = calculate_bidding_curve_distribution(distribution, "buyer")
+    first = curves[curves["scenario"] == 0].reset_index(drop=True)
+    reference = calculate_bidding_curve(
+        distribution[distribution["scenario"] == 0].drop(columns="scenario"), "buyer"
+    )
+
+    assert np.allclose(first["marginal_price"], reference["marginal_price"])
+    assert np.allclose(first["cumulative_volume"], reference["cumulative_volume"])
+
+
+def test_bidding_curve_distribution_requires_the_scenario_column():
+    distribution = self_consumption_distribution(n_scenarios=2)
+
+    with pytest.raises(KeyError, match="scenario"):
+        calculate_bidding_curve_distribution(
+            distribution.drop(columns="scenario"), "buyer"
+        )
+
+
+def test_summarize_bidding_curve_gives_ordered_bands():
+    curves = calculate_bidding_curve_distribution(
+        self_consumption_distribution(n_scenarios=20), "buyer"
+    )
+
+    bands = summarize_bidding_curve(curves)
+
+    assert (bands["n_scenarios"] == 20).all()
+    for _, row in bands.iterrows():
+        assert row["marginal_price_min"] <= row["marginal_price_q05"]
+        assert row["marginal_price_q05"] <= row["marginal_price_q50"]
+        assert row["marginal_price_q50"] <= row["marginal_price_q95"]
+        assert row["marginal_price_q95"] <= row["marginal_price_max"]
+        # per kWh columns follow from the step volume
+        assert np.isclose(
+            row["marginal_price_per_kwh_q50"], row["marginal_price_q50"] / row["volume"]
+        )
+
+
+def test_summarize_bidding_curve_validates_input():
+    curves = calculate_bidding_curve_distribution(
+        self_consumption_distribution(n_scenarios=3), "buyer"
+    )
+
+    with pytest.raises(ValueError, match=r"within \[0, 1\]"):
+        summarize_bidding_curve(curves, quantiles=[-0.1])
+
+    with pytest.raises(KeyError, match="missing the columns"):
+        summarize_bidding_curve(curves.drop(columns="marginal_price"))
+
+
+def test_risk_adjusted_curve_is_conservative_for_each_side():
+    # each side is compared against its own bands: calculate_bidding_curve sorts
+    # the volumes descending for a seller, which decomposes the steps differently
+    distribution = self_consumption_distribution(n_scenarios=25)
+
+    for side, expected_quantile, direction in (
+        ("buyer", "marginal_price_q05", "below"),
+        ("seller", "marginal_price_q95", "above"),
+    ):
+        bands = summarize_bidding_curve(
+            calculate_bidding_curve_distribution(distribution, side),
+            quantiles=[0.05, 0.5, 0.95],
+        )
+        curve = calculate_risk_adjusted_bidding_curve(
+            distribution, side, risk_level=0.05
+        )
+
+        merged = bands.merge(curve, on="cumulative_volume", suffixes=("", "_risk"))
+        assert np.allclose(merged["marginal_price"], merged[expected_quantile]), side
+        if direction == "below":
+            assert (merged["marginal_price"] <= merged["marginal_price_q50"]).all()
+        else:
+            assert (merged["marginal_price"] >= merged["marginal_price_q50"]).all()
+
+
+def test_risk_adjusted_curve_cvar_is_at_least_as_careful_as_the_quantile():
+    distribution = self_consumption_distribution(n_scenarios=25)
+
+    quantile_curve = calculate_risk_adjusted_bidding_curve(
+        distribution, "buyer", risk_level=0.2, risk_measure="quantile"
+    )
+    cvar_curve = calculate_risk_adjusted_bidding_curve(
+        distribution, "buyer", risk_level=0.2, risk_measure="cvar"
+    )
+
+    # the mean of the tail cannot exceed its upper boundary
+    assert (
+        cvar_curve["marginal_price"] <= quantile_curve["marginal_price"] + 1e-9
+    ).all()
+
+
+def test_risk_adjusted_curve_keeps_the_bidding_curve_columns():
+    distribution = self_consumption_distribution(n_scenarios=6)
+
+    curve = calculate_risk_adjusted_bidding_curve(distribution, "buyer")
+
+    assert list(curve.columns) == [
+        "volume",
+        "cumulative_volume",
+        "marginal_price",
+        "marginal_price_per_kwh",
+    ]
+    assert np.allclose(
+        curve["marginal_price_per_kwh"], curve["marginal_price"] / curve["volume"]
+    )
+
+
+def test_risk_adjusted_curve_validates_arguments():
+    distribution = self_consumption_distribution(n_scenarios=3)
+
+    with pytest.raises(ValueError, match=r"within \(0, 1\)"):
+        calculate_risk_adjusted_bidding_curve(distribution, "buyer", risk_level=0.0)
+
+    with pytest.raises(ValueError, match="risk_measure"):
+        calculate_risk_adjusted_bidding_curve(
+            distribution, "buyer", risk_measure="stddev"
+        )

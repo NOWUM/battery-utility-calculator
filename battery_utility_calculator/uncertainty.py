@@ -22,6 +22,7 @@ noise. Two properties matter for the result and are therefore explicit:
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Literal
 
 import numpy as np
 import pandas as pd
@@ -488,11 +489,18 @@ def calculate_storage_worth_distribution(
     return pd.concat(per_scenario, ignore_index=True)
 
 
-def _quantile_column(quantile: float) -> str:
+def _quantile_column(quantile: float, prefix: str = "worth") -> str:
     percent = quantile * 100
     if float(percent).is_integer():
-        return f"worth_q{int(percent):02d}"
-    return f"worth_q{percent:g}"
+        return f"{prefix}_q{int(percent):02d}"
+    return f"{prefix}_q{percent:g}"
+
+
+def _check_quantiles(quantiles: Sequence[float]) -> None:
+    for quantile in quantiles:
+        if not 0.0 <= quantile <= 1.0:
+            msg = f"Quantiles have to lie within [0, 1], got {quantile}."
+            raise ValueError(msg)
 
 
 def summarize_worth_distribution(
@@ -520,10 +528,7 @@ def summarize_worth_distribution(
         msg = f"worth_distribution is missing the columns {sorted(missing)}."
         raise KeyError(msg)
 
-    for quantile in quantiles:
-        if not 0.0 <= quantile <= 1.0:
-            msg = f"Quantiles have to lie within [0, 1], got {quantile}."
-            raise ValueError(msg)
+    _check_quantiles(quantiles)
 
     group_columns = [
         column
@@ -554,3 +559,195 @@ def summarize_worth_distribution(
     summary["worth_std"] = summary["worth_std"].fillna(0.0)
 
     return summary.reset_index()
+
+
+def calculate_bidding_curve_distribution(
+    worth_distribution: pd.DataFrame,
+    buy_or_sell_side: Literal["buyer", "seller"],
+) -> pd.DataFrame:
+    """Derive one complete bidding curve per scenario.
+
+    The curve is built inside each scenario and only then compared across
+    scenarios. Taking quantiles of the cumulative worths first and differencing
+    afterwards would mix steps from different scenarios and can produce a
+    non-monotonic curve that occurs in none of them.
+
+    Args:
+        worth_distribution: Output of :func:`calculate_storage_worth_distribution`.
+        buy_or_sell_side: Passed to ``calculate_bidding_curve``.
+
+    Returns:
+        The stacked per-scenario curves with the columns of
+        ``calculate_bidding_curve`` plus a ``scenario`` column.
+
+    Raises:
+        KeyError: If the ``scenario`` column is missing.
+    """
+    # imported here because battery_utility_calculator imports this module
+    from battery_utility_calculator.battery_utility_calculator import (
+        calculate_bidding_curve,
+    )
+
+    if "scenario" not in worth_distribution.columns:
+        raise KeyError("worth_distribution is missing the column 'scenario'.")
+
+    curves = []
+    for scenario, rows in worth_distribution.groupby("scenario", sort=True):
+        curve = calculate_bidding_curve(
+            volumes_worth=rows.drop(columns="scenario"),
+            buy_or_sell_side=buy_or_sell_side,
+        )
+        curve.insert(0, "scenario", scenario)
+        curves.append(curve)
+
+    return pd.concat(curves, ignore_index=True)
+
+
+def _bidding_curve_group_columns(curve_distribution: pd.DataFrame) -> list[str]:
+    return [
+        column
+        for column in ("cumulative_volume", "location", "exclusive_id")
+        if column in curve_distribution.columns
+    ]
+
+
+def summarize_bidding_curve(
+    curve_distribution: pd.DataFrame,
+    quantiles: Sequence[float] = (0.05, 0.5, 0.95),
+) -> pd.DataFrame:
+    """Aggregate the per-scenario curves into one row per volume step.
+
+    Args:
+        curve_distribution: Output of :func:`calculate_bidding_curve_distribution`.
+        quantiles: Quantiles of the marginal price to report, each within [0, 1].
+
+    Returns:
+        One row per volume step with ``marginal_price_mean``, ``_std``, ``_min``,
+        ``_max`` and one column per quantile, plus the matching
+        ``marginal_price_per_kwh_*`` columns.
+
+    Raises:
+        KeyError: If a required column is missing.
+        ValueError: If a quantile lies outside [0, 1].
+    """
+    required = {"scenario", "volume", "cumulative_volume", "marginal_price"}
+    missing = required - set(curve_distribution.columns)
+    if missing:
+        msg = f"curve_distribution is missing the columns {sorted(missing)}."
+        raise KeyError(msg)
+
+    _check_quantiles(quantiles)
+
+    group_columns = _bidding_curve_group_columns(curve_distribution)
+    grouped = curve_distribution.groupby(group_columns, sort=False, dropna=False)
+
+    summary = grouped.agg(
+        volume=("volume", "first"),
+        n_scenarios=("scenario", "nunique"),
+        marginal_price_mean=("marginal_price", "mean"),
+        marginal_price_std=("marginal_price", "std"),
+        marginal_price_min=("marginal_price", "min"),
+        marginal_price_max=("marginal_price", "max"),
+    )
+    for quantile in quantiles:
+        summary[_quantile_column(quantile, "marginal_price")] = grouped[
+            "marginal_price"
+        ].quantile(quantile)
+
+    # a single scenario has no spread, which pandas reports as NaN
+    summary["marginal_price_std"] = summary["marginal_price_std"].fillna(0.0)
+
+    # the step volume is constant within a group, so the per kWh figures follow
+    # from a plain division and stay consistent with the columns above
+    price_columns = [
+        column for column in summary.columns if column.startswith("marginal_price_")
+    ]
+    for column in price_columns:
+        summary[column.replace("marginal_price_", "marginal_price_per_kwh_", 1)] = (
+            summary[column] / summary["volume"]
+        )
+
+    return summary.reset_index()
+
+
+def _risk_adjusted_value(values: pd.Series, risk_level: float, measure: str, side: str):
+    """Conservative point estimate of a marginal price.
+
+    A buyer must not overpay, so the lower tail is the careful choice; a seller
+    must not undercut their own opportunity cost and looks at the upper tail.
+    """
+    if side == "buyer":
+        quantile = values.quantile(risk_level)
+        if measure == "quantile":
+            return quantile
+        tail = values[values <= quantile]
+    else:
+        quantile = values.quantile(1.0 - risk_level)
+        if measure == "quantile":
+            return quantile
+        tail = values[values >= quantile]
+
+    return tail.mean() if len(tail) else quantile
+
+
+def calculate_risk_adjusted_bidding_curve(
+    worth_distribution: pd.DataFrame,
+    buy_or_sell_side: Literal["buyer", "seller"],
+    risk_level: float = 0.05,
+    risk_measure: Literal["quantile", "cvar"] = "quantile",
+) -> pd.DataFrame:
+    """Condense the scenario curves into a single curve fit to bid with.
+
+    The direction of caution follows the side: a buyer takes the lower tail of
+    the marginal prices so that the storage is worth at least the bid in
+    ``1 - risk_level`` of the scenarios, a seller takes the upper tail.
+
+    Args:
+        worth_distribution: Output of :func:`calculate_storage_worth_distribution`.
+        buy_or_sell_side: Which side to bid on.
+        risk_level: Tail probability, e.g. ``0.05`` for a 5 % tail.
+        risk_measure: ``"quantile"`` uses the tail boundary, ``"cvar"`` the mean
+            of the tail beyond it, which also accounts for how bad the tail gets.
+
+    Returns:
+        The columns of ``calculate_bidding_curve``, with ``marginal_price`` and
+        ``marginal_price_per_kwh`` replaced by their risk adjusted values.
+
+    Raises:
+        ValueError: If ``risk_level`` is outside (0, 1) or the measure is unknown.
+    """
+    if not 0.0 < risk_level < 1.0:
+        msg = f"risk_level has to lie within (0, 1), got {risk_level}."
+        raise ValueError(msg)
+    if risk_measure not in ("quantile", "cvar"):
+        msg = f"risk_measure has to be 'quantile' or 'cvar', got '{risk_measure}'."
+        raise ValueError(msg)
+
+    curve_distribution = calculate_bidding_curve_distribution(
+        worth_distribution=worth_distribution,
+        buy_or_sell_side=buy_or_sell_side,
+    )
+
+    group_columns = _bidding_curve_group_columns(curve_distribution)
+    grouped = curve_distribution.groupby(group_columns, sort=False, dropna=False)
+
+    curve = grouped.agg(volume=("volume", "first"))
+    curve["marginal_price"] = grouped["marginal_price"].apply(
+        _risk_adjusted_value,
+        risk_level=risk_level,
+        measure=risk_measure,
+        side=buy_or_sell_side,
+    )
+    curve = curve.reset_index()
+    curve["marginal_price_per_kwh"] = curve["marginal_price"] / curve["volume"]
+
+    output_columns = [
+        "volume",
+        "cumulative_volume",
+        "marginal_price",
+        "marginal_price_per_kwh",
+    ]
+    for column in ("location", "exclusive_id"):
+        if column in curve.columns:
+            output_columns.append(column)
+    return curve[output_columns]
