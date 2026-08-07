@@ -4,6 +4,7 @@
 
 import numpy as np
 import pandas as pd
+import plotly.graph_objects as go
 import pytest
 
 from battery_utility_calculator import Storage, calculate_bidding_curve
@@ -14,6 +15,8 @@ from battery_utility_calculator.uncertainty import (
     calculate_bidding_curve_distribution,
     calculate_risk_adjusted_bidding_curve,
     calculate_storage_worth_distribution,
+    plot_bidding_curve_with_bands,
+    plot_worth_distribution,
     sample_scenarios,
     summarize_bidding_curve,
     summarize_worth_distribution,
@@ -726,3 +729,68 @@ def test_risk_adjusted_curve_validates_arguments():
         calculate_risk_adjusted_bidding_curve(
             distribution, "buyer", risk_measure="stddev"
         )
+
+
+def test_plot_worth_distribution_builds_a_figure():
+    distribution = self_consumption_distribution(n_scenarios=10)
+
+    fig = plot_worth_distribution(distribution, show=False)
+
+    assert isinstance(fig, go.Figure)
+    assert len(fig.data) > 0
+    assert fig.layout.xaxis.title.text == "Storage volume (kWh)"
+    assert fig.layout.yaxis.title.text == "Worth (EUR)"
+    # one quantity, so no legend box is needed
+    assert fig.layout.showlegend is False
+
+
+def test_plot_worth_distribution_requires_its_columns():
+    distribution = self_consumption_distribution(n_scenarios=3)
+
+    with pytest.raises(KeyError, match="missing the columns"):
+        plot_worth_distribution(distribution.drop(columns="worth"), show=False)
+
+
+def test_plot_bidding_curve_draws_a_staircase_matching_the_bands():
+    curves = calculate_bidding_curve_distribution(
+        self_consumption_distribution(n_scenarios=15), "buyer"
+    )
+    bands = summarize_bidding_curve(curves, quantiles=[0.05, 0.5, 0.95]).sort_values(
+        "cumulative_volume"
+    )
+
+    fig = plot_bidding_curve_with_bands(curves, show=False)
+
+    assert isinstance(fig, go.Figure)
+    # lower bound, filled upper bound, median line
+    assert len(fig.data) == 3
+    assert [trace.name for trace in fig.data[1:]] == [
+        "5% to 95% of scenarios",
+        "Median",
+    ]
+
+    median = fig.data[2]
+    # every step is flat over its own volume range and jumps at the edge
+    for position, (_, row) in enumerate(bands.iterrows()):
+        left = row["cumulative_volume"] - row["volume"]
+        assert np.isclose(median.x[2 * position], left)
+        assert np.isclose(median.x[2 * position + 1], row["cumulative_volume"])
+        expected = row["marginal_price_per_kwh_q50"]
+        assert np.isclose(median.y[2 * position], expected)
+        assert np.isclose(median.y[2 * position + 1], expected)
+
+    # the band encloses the median everywhere
+    assert (np.asarray(fig.data[0].y) <= np.asarray(median.y) + 1e-9).all()
+    assert (np.asarray(fig.data[1].y) >= np.asarray(median.y) - 1e-9).all()
+
+
+def test_plot_bidding_curve_validates_quantiles():
+    curves = calculate_bidding_curve_distribution(
+        self_consumption_distribution(n_scenarios=4), "buyer"
+    )
+
+    with pytest.raises(ValueError, match="have to rise"):
+        plot_bidding_curve_with_bands(curves, quantiles=(0.9, 0.1), show=False)
+
+    with pytest.raises(ValueError, match=r"within \[0, 1\]"):
+        plot_bidding_curve_with_bands(curves, quantiles=(-0.1, 0.9), show=False)

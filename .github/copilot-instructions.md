@@ -15,6 +15,7 @@ Core modules
 - `battery_utility_calculator/energy_costs_calculator.py` — `EnergyCostCalculator` (builds the Pyomo model, variables, constraints, objective, exporters, plots).
 - `battery_utility_calculator/battery_utility_calculator.py` — helper functions (`calculate_storage_worth`, `calculate_multiple_storage_worth`, `calculate_multiple_storage_worth_by_location`, `calculate_bidding_curve`, `plot_multiple_storage_worth_cashflows`) that call ECC.
 - `battery_utility_calculator/storage.py` — simple `Storage(id, c_rate, volume, charge_efficiency=0.98, discharge_efficiency=0.98)` value object.
+- `battery_utility_calculator/uncertainty.py` — scenario sampling and the wait-and-see uncertainty analysis on top of the helpers (`sample_scenarios`, `calculate_storage_worth_distribution`, `summarize_worth_distribution`, `calculate_bidding_curve_distribution`, `summarize_bidding_curve`, `calculate_risk_adjusted_bidding_curve`, two `plot_*` functions).
 
 Key tests to read
 
@@ -73,6 +74,10 @@ Project-specific quirks (important for edits)
 - Exporters and shape assumptions: exporters assume `storage_use_cases` strings exist and access model variables like `pv_to_storage[t,'home']`. If you change variable indices or use-case names, update all exporters and tests.
 - Plot methods take `show: bool = True`; always pass `show=False` in tests and only assert on the returned `go.Figure`.
 - `calculate_multiple_storage_worth` raises if two storages share an `id` while any `return_*` flag is set, because ids key the returned dicts.
+- `uncertainty.py` imports `Storage` from `storage.py` and the worth helpers *inside* the functions, because `battery_utility_calculator.py` imports this module — keep it that way or the package stops importing.
+- Correlations in `DEFAULT_CORRELATIONS` are not independent knobs: retail prices are tied to the exchange at 1.0, so they inherit every other correlation of the exchange, and `build_correlation_matrix` rejects any set that is not positive semi-definite. Sampling uses an eigendecomposition rather than a Cholesky factorisation precisely because that perfect pair makes the matrix singular.
+- Bidding curves under uncertainty are built **per scenario and only then compared**. Taking quantiles of the cumulative worths first and differencing afterwards mixes steps from different scenarios.
+- `calculate_bidding_curve` sorts volumes descending for `"seller"`, which yields a different step decomposition than `"buyer"` — never compare a seller curve against buyer bands.
 
 Developer workflows (quick commands)
 

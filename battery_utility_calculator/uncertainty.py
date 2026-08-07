@@ -26,6 +26,8 @@ from typing import Literal
 
 import numpy as np
 import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
 
 # imported from the module rather than the package to avoid an import cycle
 from battery_utility_calculator.storage import Storage
@@ -751,3 +753,155 @@ def calculate_risk_adjusted_bidding_curve(
         if column in curve.columns:
             output_columns.append(column)
     return curve[output_columns]
+
+
+# single hue, light to dark; these charts show one quantity, not several series
+_BAND_COLOR = "#9ec5f4"
+_LINE_COLOR = "#256abf"
+_GRID_COLOR = "#e8e8e5"
+
+
+def _apply_chart_style(fig: go.Figure) -> None:
+    """Hairline, recessive grid and axes so the marks carry the chart."""
+    fig.update_xaxes(gridcolor=_GRID_COLOR, zeroline=False, linecolor=_GRID_COLOR)
+    fig.update_yaxes(gridcolor=_GRID_COLOR, zeroline=False, linecolor=_GRID_COLOR)
+    fig.update_layout(plot_bgcolor="rgba(0,0,0,0)")
+
+
+def plot_worth_distribution(
+    worth_distribution: pd.DataFrame,
+    show: bool = True,
+    title: str | None = None,
+) -> go.Figure:
+    """Plot the spread of the storage worth per storage size.
+
+    Args:
+        worth_distribution: Output of :func:`calculate_storage_worth_distribution`.
+        show: If True, call ``show()`` on the figure.
+        title: Optional plot title; a default is used if omitted.
+
+    Returns:
+        Box plot of the worth per volume, one box per storage size.
+
+    Raises:
+        KeyError: If a required column is missing.
+    """
+    required = {"volume", "worth"}
+    missing = required - set(worth_distribution.columns)
+    if missing:
+        msg = f"worth_distribution is missing the columns {sorted(missing)}."
+        raise KeyError(msg)
+
+    df = worth_distribution.copy()
+    df["volume"] = df["volume"].astype(float)
+
+    fig = px.box(
+        df.sort_values("volume"),
+        x="volume",
+        y="worth",
+        points="outliers",
+        title=title if title is not None else "Storage worth across scenarios",
+        color_discrete_sequence=[_LINE_COLOR],
+    )
+    fig.update_traces(line_width=1.5, marker_size=4, fillcolor=_BAND_COLOR)
+    fig.update_layout(
+        xaxis_title="Storage volume (kWh)",
+        yaxis_title="Worth (EUR)",
+        showlegend=False,
+    )
+    _apply_chart_style(fig)
+
+    if show:
+        fig.show()
+    return fig
+
+
+def plot_bidding_curve_with_bands(
+    curve_distribution: pd.DataFrame,
+    quantiles: tuple[float, float] = (0.05, 0.95),
+    show: bool = True,
+    title: str | None = None,
+) -> go.Figure:
+    """Plot the bidding curve as a staircase with an uncertainty band.
+
+    Each capacity increment holds one price over its whole volume range, so the
+    curve is drawn as steps rather than interpolated between the step ends.
+
+    Args:
+        curve_distribution: Output of :func:`calculate_bidding_curve_distribution`.
+        quantiles: Lower and upper quantile bounding the band.
+        show: If True, call ``show()`` on the figure.
+        title: Optional plot title; a default is used if omitted.
+
+    Returns:
+        Figure with the median staircase and the band between the quantiles.
+
+    Raises:
+        ValueError: If the quantiles are not a rising pair within [0, 1].
+    """
+    low, high = quantiles
+    _check_quantiles(quantiles)
+    if low >= high:
+        msg = f"quantiles have to rise, got ({low}, {high})."
+        raise ValueError(msg)
+
+    bands = summarize_bidding_curve(curve_distribution, quantiles=[low, 0.5, high])
+    bands = bands.sort_values("cumulative_volume")
+
+    # a staircase: every step spans from its left edge to its cumulative volume
+    left_edges = bands["cumulative_volume"] - bands["volume"]
+    steps_x = np.repeat(np.column_stack([left_edges, bands["cumulative_volume"]]), 1)
+
+    def staircase(column: str) -> np.ndarray:
+        return np.repeat(bands[column].to_numpy(dtype=float), 2)
+
+    low_column = _quantile_column(low, "marginal_price_per_kwh")
+    high_column = _quantile_column(high, "marginal_price_per_kwh")
+    median_column = _quantile_column(0.5, "marginal_price_per_kwh")
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=steps_x,
+            y=staircase(low_column),
+            mode="lines",
+            line=dict(width=0),
+            hoverinfo="skip",
+            showlegend=False,
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=steps_x,
+            y=staircase(high_column),
+            mode="lines",
+            line=dict(width=0),
+            fill="tonexty",
+            fillcolor="rgba(158, 197, 244, 0.45)",
+            name=f"{low:.0%} to {high:.0%} of scenarios",
+            hovertemplate="%{y:.3f} EUR/kWh<extra></extra>",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=steps_x,
+            y=staircase(median_column),
+            mode="lines",
+            line=dict(color=_LINE_COLOR, width=2),
+            name="Median",
+            hovertemplate="%{y:.3f} EUR/kWh<extra></extra>",
+        )
+    )
+
+    fig.update_layout(
+        title=title if title is not None else "Bidding curve with uncertainty band",
+        xaxis_title="Cumulative volume (kWh)",
+        yaxis_title="Marginal price (EUR/kWh)",
+        hovermode="x unified",
+        legend_title_text="",
+    )
+    _apply_chart_style(fig)
+
+    if show:
+        fig.show()
+    return fig

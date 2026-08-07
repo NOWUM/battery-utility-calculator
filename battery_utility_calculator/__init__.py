@@ -14,6 +14,8 @@ from battery_utility_calculator.uncertainty import (
     calculate_bidding_curve_distribution as calculate_bidding_curve_distribution,
     calculate_risk_adjusted_bidding_curve as calculate_risk_adjusted_bidding_curve,
     calculate_storage_worth_distribution as calculate_storage_worth_distribution,
+    plot_bidding_curve_with_bands as plot_bidding_curve_with_bands,
+    plot_worth_distribution as plot_worth_distribution,
     sample_scenarios as sample_scenarios,
     summarize_bidding_curve as summarize_bidding_curve,
     summarize_worth_distribution as summarize_worth_distribution,
