@@ -10,6 +10,10 @@ import plotly.graph_objects as go
 import pyomo.environ as pyo
 
 from battery_utility_calculator import Storage
+from battery_utility_calculator.timeseries import (
+    describe_index_mismatch,
+    indices_match,
+)
 
 log = logging.getLogger("battery_utility")
 log.setLevel(logging.WARNING)
@@ -371,9 +375,10 @@ class EnergyCostCalculator:
                 msg = f"Index of {name} has to be pd.DateTimeIndex!"
                 raise TypeError(msg)
 
-            if not series.index.equals(ref_index):
+            if not indices_match(series.index, ref_index):
                 raise ValueError(
-                    f"All timeseries indices must be identical. Index of {name} does not equal index of demand."
+                    "All timeseries indices must be identical.\n"
+                    + describe_index_mismatch(ref_index, series.index, "demand", name)
                 )
 
             series.index = new_index
@@ -387,10 +392,12 @@ class EnergyCostCalculator:
                 if not isinstance(series.index, pd.DatetimeIndex):
                     msg = f"Index of {label} has to be pd.DateTimeIndex!"
                     raise TypeError(msg)
-                if not series.index.equals(ref_index):
+                if not indices_match(series.index, ref_index):
                     raise ValueError(
-                        f"All timeseries indices must be identical. Index of {label} "
-                        "does not equal index of demand."
+                        "All timeseries indices must be identical.\n"
+                        + describe_index_mismatch(
+                            ref_index, series.index, "demand", label
+                        )
                     )
                 series.index = new_index
                 prepared_community[location] = series

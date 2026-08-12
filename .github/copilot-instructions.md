@@ -15,6 +15,8 @@ Core modules
 - `battery_utility_calculator/energy_costs_calculator.py` — `EnergyCostCalculator` (builds the Pyomo model, variables, constraints, objective, exporters, plots).
 - `battery_utility_calculator/battery_utility_calculator.py` — helper functions (`calculate_storage_worth`, `calculate_multiple_storage_worth`, `calculate_multiple_storage_worth_by_location`, `calculate_bidding_curve`, `plot_multiple_storage_worth_cashflows`) that call ECC.
 - `battery_utility_calculator/storage.py` — simple `Storage(id, c_rate, volume, charge_efficiency=0.98, discharge_efficiency=0.98)` value object.
+- `battery_utility_calculator/timeseries.py` — shared index validation (`indices_match`, `describe_index_mismatch`, `check_identical_indices`), used by the optimizer and the scenario sampling.
+- `battery_utility_calculator/uncertainty.py` — scenario sampling and the wait-and-see uncertainty analysis on top of the helpers (`sample_scenarios`, `calculate_storage_worth_distribution`, `summarize_worth_distribution`, `calculate_bidding_curve_distribution`, `summarize_bidding_curve`, `calculate_risk_adjusted_bidding_curve`, two `plot_*` functions).
 
 Key tests to read
 
@@ -24,7 +26,7 @@ Concrete data shapes & minimal examples
 
 - Every timeseries is a separate `pandas.Series` argument (`demand`, `solar_generation`, `supplier_prices`, `eeg_prices`, `wholesale_market_prices`), not one DataFrame.
 - `community_market_prices` is a `dict[str, pd.Series]` keyed by location, or `None` to disable the community market.
-- **All series must share one identical `pd.DatetimeIndex`.** A non-datetime index raises `TypeError`, a mismatched one `ValueError`. Do not copy integer-index examples from older docs.
+- **All series must share one identical `pd.DatetimeIndex`.** A non-datetime index raises `TypeError`, a mismatched one `ValueError`. Do not copy integer-index examples from older docs. Indices are compared by value, not with `Index.equals`, because that compares the dtype too — the same instants as `datetime64[ns]` and `datetime64[us]` would otherwise be rejected on pandas 2.x. Differing resolutions and timezones denoting the same moments are accepted; differing length, order or wall clock are not.
 - `demand` and `solar_generation` are kW and get multiplied by `hours_per_timestep` internally; prices are EUR/kWh.
 - Example (from tests):
 
@@ -73,6 +75,10 @@ Project-specific quirks (important for edits)
 - Exporters and shape assumptions: exporters assume `storage_use_cases` strings exist and access model variables like `pv_to_storage[t,'home']`. If you change variable indices or use-case names, update all exporters and tests.
 - Plot methods take `show: bool = True`; always pass `show=False` in tests and only assert on the returned `go.Figure`.
 - `calculate_multiple_storage_worth` raises if two storages share an `id` while any `return_*` flag is set, because ids key the returned dicts.
+- `uncertainty.py` imports `Storage` from `storage.py` and the worth helpers *inside* the functions, because `battery_utility_calculator.py` imports this module — keep it that way or the package stops importing.
+- Correlations in `DEFAULT_CORRELATIONS` are not independent knobs: retail prices are tied to the exchange at 1.0, so they inherit every other correlation of the exchange, and `build_correlation_matrix` rejects any set that is not positive semi-definite. Sampling uses an eigendecomposition rather than a Cholesky factorisation precisely because that perfect pair makes the matrix singular.
+- Bidding curves under uncertainty are built **per scenario and only then compared**. Taking quantiles of the cumulative worths first and differencing afterwards mixes steps from different scenarios.
+- `calculate_bidding_curve` sorts volumes descending for `"seller"`, which yields a different step decomposition than `"buyer"` — never compare a seller curve against buyer bands.
 
 Developer workflows (quick commands)
 

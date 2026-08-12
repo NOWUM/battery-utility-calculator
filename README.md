@@ -206,5 +206,113 @@ print(kpis["discharged_by_sink_kwh"])
 ecc.plot_storage_usage_summary()
 ```
 
+## Uncertainty analysis
+
+The optimizer is deterministic and has perfect foresight, so a single run yields a
+single number. To see how much that number depends on the assumed forecast, sample
+scenarios around the base timeseries and solve each of them.
+
+- `sample_scenarios(...)` — draws scenarios by adding correlated, persistent noise to
+  the base timeseries. Returns `Scenario` objects; `scenario.to_ecc_kwargs()` feeds
+  straight into the optimizer.
+- `calculate_storage_worth_distribution(...)` — solves every scenario, one row per
+  scenario and storage.
+- `summarize_worth_distribution(...)` — mean, spread and quantiles per storage size.
+- `calculate_bidding_curve_distribution(...)` — one full bidding curve per scenario.
+- `summarize_bidding_curve(...)` — quantile bands per volume step.
+- `calculate_risk_adjusted_bidding_curve(...)` — a single curve to bid with.
+- `plot_worth_distribution(...)`, `plot_bidding_curve_with_bands(...)` — Plotly figures.
+
+```py
+import numpy as np
+import pandas as pd
+from battery_utility_calculator import (
+    Storage,
+    calculate_bidding_curve_distribution,
+    calculate_risk_adjusted_bidding_curve,
+    calculate_storage_worth_distribution,
+    sample_scenarios,
+    summarize_bidding_curve,
+)
+
+index = pd.date_range("2025-06-01", freq="h", periods=24)
+hours = np.arange(24)
+
+scenarios = sample_scenarios(
+    demand=pd.Series(0.4 + 0.5 * np.exp(-((hours - 19) ** 2) / 8), index=index),
+    solar_generation=pd.Series(
+        np.clip(4 * np.sin((hours - 6) * np.pi / 12), 0, None), index=index
+    ),
+    supplier_prices=pd.Series(0.32, index=index),
+    eeg_prices=pd.Series(0.08, index=index),
+    wholesale_market_prices=pd.Series(0.09, index=index),
+    community_market_prices=None,
+    n_scenarios=50,
+    relative_std={"solar_generation": 0.25},  # overrides DEFAULT_RELATIVE_STD
+    persistence_hours=12,  # forecast errors decay to 1/e after 12 hours
+    hours_per_timestep=1,
+    seed=42,
+)
+
+# storage may only serve the household, so its value saturates
+self_consumption = dict(
+    storage_use_cases=["home", "eeg"],
+    allow_storage_to_wholesale=False,
+    allow_wholesale_to_storage=False,
+    allow_pv_to_wholesale=False,
+    allow_community_to_home=False,
+    allow_community_to_storage=False,
+    allow_pv_to_community=False,
+    allow_storage_to_community=False,
+)
+
+distribution = calculate_storage_worth_distribution(
+    baseline_storage=Storage(id=0, c_rate=1, volume=0),
+    storages_to_calculate=[
+        Storage(id=i, c_rate=1, volume=v) for i, v in enumerate([1, 2, 4, 8], start=1)
+    ],
+    scenarios=scenarios,
+    solver="appsi_highs",
+    **self_consumption,
+)
+
+bands = summarize_bidding_curve(
+    calculate_bidding_curve_distribution(distribution, "buyer")
+)
+print(bands[["cumulative_volume", "marginal_price_q05", "marginal_price_q95"]])
+
+# a single curve fit to bid with: the buyer takes the lower tail
+bid = calculate_risk_adjusted_bidding_curve(distribution, "buyer", risk_level=0.05)
+print(bid)
+```
+
+### What the numbers do and do not say
+
+Each scenario is optimized on its own, so the optimizer knows *that scenario's*
+future exactly (wait-and-see). The spread therefore answers "how much does the worth
+vary across possible futures" - it is not the worth to an operator deciding without
+knowing the future, and the mean is optimistically biased.
+
+Two modelling points worth knowing before reading the output:
+
+- **Correlations are not free parameters.** `DEFAULT_CORRELATIONS` ties retail prices
+  to the exchange one to one, which forces retail to inherit every other correlation
+  of the exchange. `build_correlation_matrix` rejects combinations that describe no
+  joint distribution, so adjust the set as a whole rather than pair by pair.
+- **Persistence drives the spread.** With `persistence_hours=0` the forecast errors
+  average out over the horizon and the worth barely moves between scenarios. The
+  default of 12 hours means an error still correlates at 37 % half a day later.
+
+### Where storage value comes from
+
+The example above deliberately blocks trading, because the value of a storage needs
+a *spread* between buying and selling. A community market modelled with one price per
+timestep for both directions removes that spread entirely: selling PV and buying it
+back at the same price is a wash, so the optimizer bypasses self-consumption and only
+runs intraday arbitrage. Value is then linear in the volume, the marginal price never
+falls, and the bidding curve carries no information. With the classic prosumer spread
+(0.32 buying, 0.08 feed-in) the value saturates once the evening load is covered, which
+is what makes a bidding curve meaningful.
+
 ## License
 MIT - see [LICENSE](./LICENSE)
