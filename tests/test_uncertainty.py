@@ -751,7 +751,7 @@ def test_plot_worth_distribution_requires_its_columns():
         plot_worth_distribution(distribution.drop(columns="worth"), show=False)
 
 
-def test_plot_bidding_curve_draws_a_staircase_matching_the_bands():
+def test_plot_bidding_curve_draws_one_block_per_increment():
     curves = calculate_bidding_curve_distribution(
         self_consumption_distribution(n_scenarios=15), "buyer"
     )
@@ -762,26 +762,45 @@ def test_plot_bidding_curve_draws_a_staircase_matching_the_bands():
     fig = plot_bidding_curve_with_bands(curves, show=False)
 
     assert isinstance(fig, go.Figure)
-    # lower bound, filled upper bound, median line
-    assert len(fig.data) == 3
-    assert [trace.name for trace in fig.data[1:]] == [
-        "5% to 95% of scenarios",
-        "Median",
-    ]
+    blocks = fig.data[0]
+    assert blocks.type == "bar"
+    assert len(blocks.x) == len(bands)
 
-    median = fig.data[2]
-    # every step is flat over its own volume range and jumps at the edge
     for position, (_, row) in enumerate(bands.iterrows()):
-        left = row["cumulative_volume"] - row["volume"]
-        assert np.isclose(median.x[2 * position], left)
-        assert np.isclose(median.x[2 * position + 1], row["cumulative_volume"])
-        expected = row["marginal_price_per_kwh_q50"]
-        assert np.isclose(median.y[2 * position], expected)
-        assert np.isclose(median.y[2 * position + 1], expected)
+        assert np.isclose(blocks.y[position], row["marginal_price_per_kwh_q50"])
+        left, right, lower, upper = blocks.customdata[position]
+        assert np.isclose(left, row["cumulative_volume"] - row["volume"])
+        assert np.isclose(right, row["cumulative_volume"])
+        assert np.isclose(lower, row["marginal_price_per_kwh_q05"])
+        assert np.isclose(upper, row["marginal_price_per_kwh_q95"])
+        # the error bar spans from the lower to the upper quantile
+        assert np.isclose(
+            blocks.error_y["arrayminus"][position],
+            row["marginal_price_per_kwh_q50"] - lower,
+        )
+        assert np.isclose(
+            blocks.error_y["array"][position],
+            upper - row["marginal_price_per_kwh_q50"],
+        )
 
-    # the band encloses the median everywhere
-    assert (np.asarray(fig.data[0].y) <= np.asarray(median.y) + 1e-9).all()
-    assert (np.asarray(fig.data[1].y) >= np.asarray(median.y) - 1e-9).all()
+
+def test_plot_bidding_curve_blocks_are_hoverable_across_their_range():
+    # the point of the block form: reading the first increment must not require
+    # placing the cursor exactly on the left edge
+    curves = calculate_bidding_curve_distribution(
+        self_consumption_distribution(n_scenarios=8), "buyer"
+    )
+
+    fig = plot_bidding_curve_with_bands(curves, show=False)
+    blocks = fig.data[0]
+
+    for position in range(len(blocks.x)):
+        left, right, _, _ = blocks.customdata[position]
+        centre, width = blocks.x[position], blocks.width[position]
+        # the drawn block covers virtually its whole volume range
+        assert centre - width / 2 >= left - 1e-9
+        assert centre + width / 2 <= right + 1e-9
+        assert width >= 0.9 * (right - left)
 
 
 def test_plot_bidding_curve_validates_quantiles():

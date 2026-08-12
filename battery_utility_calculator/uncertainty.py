@@ -803,10 +803,13 @@ def plot_bidding_curve_with_bands(
     show: bool = True,
     title: str | None = None,
 ) -> go.Figure:
-    """Plot the bidding curve as a staircase with an uncertainty band.
+    """Plot the bidding curve as capacity blocks with an uncertainty band.
 
-    Each capacity increment holds one price over its whole volume range, so the
-    curve is drawn as steps rather than interpolated between the step ends.
+    Each capacity increment holds one price over its whole volume range, so it
+    is drawn as a block sitting on that range - the usual merit order reading,
+    and every price stays readable by pointing anywhere at its block instead of
+    only at a step edge. The band between the quantiles rides on each block as
+    an error bar.
 
     Args:
         curve_distribution: Output of :func:`calculate_bidding_curve_distribution`.
@@ -815,7 +818,8 @@ def plot_bidding_curve_with_bands(
         title: Optional plot title; a default is used if omitted.
 
     Returns:
-        Figure with the median staircase and the band between the quantiles.
+        Figure with one block per increment, carrying the median price and the
+        band as an asymmetric error bar.
 
     Raises:
         ValueError: If the quantiles are not a rising pair within [0, 1].
@@ -827,50 +831,47 @@ def plot_bidding_curve_with_bands(
         raise ValueError(msg)
 
     bands = summarize_bidding_curve(curve_distribution, quantiles=[low, 0.5, high])
-    bands = bands.sort_values("cumulative_volume")
-
-    # a staircase: every step spans from its left edge to its cumulative volume
-    left_edges = bands["cumulative_volume"] - bands["volume"]
-    steps_x = np.repeat(np.column_stack([left_edges, bands["cumulative_volume"]]), 1)
-
-    def staircase(column: str) -> np.ndarray:
-        return np.repeat(bands[column].to_numpy(dtype=float), 2)
+    bands = bands.sort_values("cumulative_volume").reset_index(drop=True)
 
     low_column = _quantile_column(low, "marginal_price_per_kwh")
     high_column = _quantile_column(high, "marginal_price_per_kwh")
     median_column = _quantile_column(0.5, "marginal_price_per_kwh")
 
-    fig = go.Figure()
-    fig.add_trace(
-        go.Scatter(
-            x=steps_x,
-            y=staircase(low_column),
-            mode="lines",
-            line=dict(width=0),
-            hoverinfo="skip",
+    right_edges = bands["cumulative_volume"].to_numpy(dtype=float)
+    widths = bands["volume"].to_numpy(dtype=float)
+    left_edges = right_edges - widths
+    median = bands[median_column].to_numpy(dtype=float)
+    lower = bands[low_column].to_numpy(dtype=float)
+    upper = bands[high_column].to_numpy(dtype=float)
+
+    # one block per capacity increment, sitting on its own volume range - the
+    # usual merit order reading, and hoverable across its whole width instead
+    # of only at the step edges
+    gap = 0.004 * float(right_edges[-1]) if len(right_edges) else 0.0
+    fig = go.Figure(
+        go.Bar(
+            x=left_edges + widths / 2,
+            y=median,
+            width=np.maximum(widths - gap, widths * 0.6),
+            marker_color=_BAND_COLOR,
+            error_y=dict(
+                type="data",
+                symmetric=False,
+                array=upper - median,
+                arrayminus=median - lower,
+                color=_LINE_COLOR,
+                thickness=1.5,
+                width=4,
+            ),
+            customdata=np.column_stack([left_edges, right_edges, lower, upper]),
+            hovertemplate=(
+                "<b>%{customdata[0]:.3g} to %{customdata[1]:.3g} kWh</b><br>"
+                "median %{y:.3f} EUR/kWh<br>"
+                f"{low:.0%} to {high:.0%} of scenarios: "
+                "%{customdata[2]:.3f} to %{customdata[3]:.3f}<extra></extra>"
+            ),
+            name="Marginal price",
             showlegend=False,
-        )
-    )
-    fig.add_trace(
-        go.Scatter(
-            x=steps_x,
-            y=staircase(high_column),
-            mode="lines",
-            line=dict(width=0),
-            fill="tonexty",
-            fillcolor="rgba(158, 197, 244, 0.45)",
-            name=f"{low:.0%} to {high:.0%} of scenarios",
-            hovertemplate="%{y:.3f} EUR/kWh<extra></extra>",
-        )
-    )
-    fig.add_trace(
-        go.Scatter(
-            x=steps_x,
-            y=staircase(median_column),
-            mode="lines",
-            line=dict(color=_LINE_COLOR, width=2),
-            name="Median",
-            hovertemplate="%{y:.3f} EUR/kWh<extra></extra>",
         )
     )
 
@@ -878,9 +879,12 @@ def plot_bidding_curve_with_bands(
         title=title if title is not None else "Bidding curve with uncertainty band",
         xaxis_title="Cumulative volume (kWh)",
         yaxis_title="Marginal price (EUR/kWh)",
-        hovermode="x unified",
-        legend_title_text="",
+        yaxis_rangemode="tozero",
+        bargap=0,
+        hovermode="closest",
     )
+    # ticks on the step edges, so the blocks can be read against the volumes
+    fig.update_xaxes(tickmode="array", tickvals=[0.0, *right_edges])
     _apply_chart_style(fig)
 
     if show:
