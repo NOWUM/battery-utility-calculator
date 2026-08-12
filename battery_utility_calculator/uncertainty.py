@@ -31,6 +31,7 @@ import plotly.graph_objects as go
 
 # imported from the module rather than the package to avoid an import cycle
 from battery_utility_calculator.storage import Storage
+from battery_utility_calculator.timeseries import check_identical_indices
 
 # the order fixes rows and columns of the correlation matrix
 UNCERTAIN_QUANTITIES = (
@@ -241,26 +242,6 @@ def _disturb(base: pd.Series, noise: np.ndarray, relative_std: float, kind: str)
     return pd.Series(disturbed, index=base.index, name=base.name)
 
 
-def _check_indices(series_by_name: dict[str, pd.Series]) -> pd.Index:
-    reference_name, reference = next(iter(series_by_name.items()))
-    if not isinstance(reference.index, pd.DatetimeIndex):
-        msg = f"Index of {reference_name} has to be pd.DateTimeIndex!"
-        raise TypeError(msg)
-
-    for name, series in series_by_name.items():
-        if not isinstance(series.index, pd.DatetimeIndex):
-            msg = f"Index of {name} has to be pd.DateTimeIndex!"
-            raise TypeError(msg)
-        if not series.index.equals(reference.index):
-            msg = (
-                "All timeseries indices must be identical. Index of "
-                f"{name} does not equal index of {reference_name}."
-            )
-            raise ValueError(msg)
-
-    return reference.index
-
-
 def sample_scenarios(
     demand: pd.Series,
     solar_generation: pd.Series,
@@ -331,7 +312,7 @@ def sample_scenarios(
     if community_market_prices is not None:
         for location, series in community_market_prices.items():
             base_series[f"community_market_prices['{location}']"] = series
-    index = _check_indices(base_series)
+    index = check_identical_indices(base_series)
 
     standard_deviations = dict(DEFAULT_RELATIVE_STD)
     if relative_std is not None:
