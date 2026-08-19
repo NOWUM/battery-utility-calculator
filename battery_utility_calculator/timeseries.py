@@ -12,6 +12,7 @@ from a file or a database - are reported as different on pandas 2.x. Comparing
 the values instead keeps the check on what actually matters.
 """
 
+import numpy as np
 import pandas as pd
 
 
@@ -87,6 +88,22 @@ def describe_index_mismatch(
     return "\n".join(lines)
 
 
+def check_finite(series: pd.Series, name: str) -> None:
+    """Reject NaN and inf in an input timeseries.
+
+    A NaN in a price series becomes a coefficient of the objective, and no solver
+    reports that back: HiGHS answers "optimal" with an objective of nan, or hangs
+    outright as soon as the storage variables are not fixed to zero by a volume of
+    0. So the values are checked where the indices are checked.
+    """
+    invalid = ~np.isfinite(series.to_numpy(dtype=float))
+    if invalid.any():
+        raise ValueError(
+            f"{name} contains {int(invalid.sum())} NaN or infinite values, the first "
+            f"at {series.index[invalid.argmax()]}. Fill or drop them before optimizing."
+        )
+
+
 def check_identical_indices(series_by_name: dict[str, pd.Series]) -> pd.Index:
     """Validate that every series shares one datetime index and return it.
 
@@ -114,5 +131,6 @@ def check_identical_indices(series_by_name: dict[str, pd.Series]) -> pd.Index:
                 )
             )
             raise ValueError(msg)
+        check_finite(series, name)
 
     return reference.index

@@ -11,6 +11,7 @@ import pyomo.environ as pyo
 
 from battery_utility_calculator import Storage
 from battery_utility_calculator.timeseries import (
+    check_finite,
     describe_index_mismatch,
     indices_match,
 )
@@ -363,6 +364,8 @@ class EnergyCostCalculator:
         else:
             ref_index = self.demand.index.copy()
 
+        check_finite(self.demand, "demand")
+
         self.original_index = ref_index
         new_index = pd.RangeIndex(len(ref_index))
 
@@ -380,6 +383,8 @@ class EnergyCostCalculator:
                     "All timeseries indices must be identical.\n"
                     + describe_index_mismatch(ref_index, series.index, "demand", name)
                 )
+
+            check_finite(series, name)
 
             series.index = new_index
             setattr(self, name, series)
@@ -399,6 +404,8 @@ class EnergyCostCalculator:
                             ref_index, series.index, "demand", label
                         )
                     )
+                check_finite(series, label)
+
                 series.index = new_index
                 prepared_community[location] = series
             self.community_market_prices = prepared_community
@@ -1114,12 +1121,18 @@ class EnergyCostCalculator:
         # ensure all entries are floats
         return {k: float(v) for k, v in raw.items()}
 
-    def optimize(self, solver: str = "gurobi"):
+    def optimize(self, solver: str = "gurobi", tee: bool = False):
         optimizer = pyo.SolverFactory(
             solver,
         )
 
-        optimizer.solve(self.model, tee=False)
+        results = optimizer.solve(self.model, tee=tee)
+
+        condition = results.solver.termination_condition
+        if condition != pyo.TerminationCondition.optimal:
+            raise RuntimeError(
+                f"Solver '{solver}' found no optimal solution: {condition}"
+            )
 
         self.is_optimized = True
 
