@@ -60,6 +60,7 @@ def calculate_storage_worth(
     allow_wholesale_to_storage: bool = True,
     allow_storage_to_wholesale: bool = True,
     wholesale_fee: float = 0.3,
+    rented_pv_grid_fee: float | None = None,
     my_location: str = "aachen",
     grid_fee_between_locations: dict[str, dict[str, float]]
     | None = DEFAULT_GRID_FEE_BETWEEN_LOCATIONS,
@@ -96,6 +97,7 @@ def calculate_storage_worth(
         allow_wholesale_to_storage (bool, optional): Allow wholesale imports into storage. Defaults to True.
         allow_storage_to_wholesale (bool, optional): Wether to allow selling from storage to wholesale market. Defaults to True.
         is_rented_storage (bool, optional): If True, grid fees follow tenant (buyer) flows; if False, storage-provider flows only. Defaults to False.
+        rented_pv_grid_fee (float | None, optional): Grid fee in EUR/kWh on PV charged into a rented storage for later home use, applied only when ``is_rented_storage`` is True. ``None`` keeps charging every ``pv_to_storage`` use case at the location rate. Defaults to None.
         goal (str, optional): Optimization goal. Defaults to "max_cashflow".
         return_charge_timeseries (bool, optional): If True, returns dict with charge timeseries data.
             Default is False.
@@ -133,6 +135,7 @@ def calculate_storage_worth(
         allow_wholesale_to_storage=allow_wholesale_to_storage,
         allow_storage_to_wholesale=allow_storage_to_wholesale,
         wholesale_fee=wholesale_fee,
+        rented_pv_grid_fee=rented_pv_grid_fee,
         my_location=my_location,
         grid_fee_between_locations=grid_fee_between_locations,
         storage_location=storage_location,
@@ -164,6 +167,7 @@ def calculate_storage_worth(
         allow_wholesale_to_storage=allow_wholesale_to_storage,
         allow_storage_to_wholesale=allow_storage_to_wholesale,
         wholesale_fee=wholesale_fee,
+        rented_pv_grid_fee=rented_pv_grid_fee,
         my_location=my_location,
         grid_fee_between_locations=grid_fee_between_locations,
         storage_location=storage_location,
@@ -225,6 +229,7 @@ def calculate_multiple_storage_worth(
     allow_wholesale_to_storage: bool = True,
     allow_storage_to_wholesale: bool = True,
     wholesale_fee: float = 0.3,
+    rented_pv_grid_fee: float | None = None,
     my_location: str = "aachen",
     grid_fee_between_locations: dict[str, dict[str, float]]
     | None = DEFAULT_GRID_FEE_BETWEEN_LOCATIONS,
@@ -261,6 +266,7 @@ def calculate_multiple_storage_worth(
         allow_wholesale_to_storage (bool, optional): Allow wholesale imports into storage. Defaults to True.
         allow_storage_to_wholesale (bool, optional): Wether to allow selling from storage to wholesale market. Defaults to True.
         is_rented_storage (bool, optional): If True, grid fees follow tenant (buyer) flows; if False, storage-provider flows only. Defaults to False.
+        rented_pv_grid_fee (float | None, optional): Grid fee in EUR/kWh on PV charged into a rented storage for later home use, applied only when ``is_rented_storage`` is True. ``None`` keeps charging every ``pv_to_storage`` use case at the location rate. Defaults to None.
         goal (str, optional): Optimization goal. Defaults to "max_cashflow".
         return_charge_timeseries (bool, optional): If True, returns dict with charge timeseries data. Defaults to False.
         return_soc_timeseries (bool, optional): If True, returns dict with SOC timeseries data. Defaults to False.
@@ -318,6 +324,7 @@ def calculate_multiple_storage_worth(
         allow_wholesale_to_storage=allow_wholesale_to_storage,
         allow_storage_to_wholesale=allow_storage_to_wholesale,
         wholesale_fee=wholesale_fee,
+        rented_pv_grid_fee=rented_pv_grid_fee,
         my_location=my_location,
         grid_fee_between_locations=grid_fee_between_locations,
         storage_location=storage_location,
@@ -386,6 +393,7 @@ def calculate_multiple_storage_worth(
             allow_wholesale_to_storage=allow_wholesale_to_storage,
             allow_storage_to_wholesale=allow_storage_to_wholesale,
             wholesale_fee=wholesale_fee,
+            rented_pv_grid_fee=rented_pv_grid_fee,
             my_location=my_location,
             grid_fee_between_locations=grid_fee_between_locations,
             storage_location=storage_location,
@@ -461,6 +469,7 @@ def calculate_multiple_storage_worth_by_location(
     allow_wholesale_to_storage: bool = True,
     allow_storage_to_wholesale: bool = True,
     wholesale_fee: float = 0.3,
+    rented_pv_grid_fee: float | None = None,
     my_location: str = "aachen",
     grid_fee_between_locations: dict[str, dict[str, float]]
     | None = DEFAULT_GRID_FEE_BETWEEN_LOCATIONS,
@@ -477,6 +486,9 @@ def calculate_multiple_storage_worth_by_location(
 
     Uses ``is_rented_storage=True`` (tenant / buyer perspective) for grid-fee flows at each
     ``storage_location``. Returns one row per location and storage configuration (including baseline row).
+
+    ``rented_pv_grid_fee`` is passed through unchanged; since the tenant perspective is
+    fixed here, setting it charges PV kept for home use at that rate in every location.
     """
     rows = []
     for location in locations_to_calculate:
@@ -500,6 +512,7 @@ def calculate_multiple_storage_worth_by_location(
             allow_wholesale_to_storage=allow_wholesale_to_storage,
             allow_storage_to_wholesale=allow_storage_to_wholesale,
             wholesale_fee=wholesale_fee,
+            rented_pv_grid_fee=rented_pv_grid_fee,
             my_location=my_location,
             grid_fee_between_locations=grid_fee_between_locations,
             storage_location=location,
