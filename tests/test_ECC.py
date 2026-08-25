@@ -1627,3 +1627,138 @@ def test_ECC_pv_via_storage_to_community():
     assert flows["pv_to_storage_for_community"].iloc[0] == 1.0
     assert flows["storage_to_community_aachen"].iloc[1] == 1.0
     assert flows["community_to_storage_for_community"].sum() == 0.0
+
+
+def _rented_pv_calc(**kwargs) -> EnergyCostCalculator:
+    """Rented storage that has to split 2 kWh of PV between the home and eeg sinks.
+
+    PV arrives at t0, the eeg price peaks at t1 and the demand falls at t2, so one
+    kWh is worth storing for each sink. The supplier is expensive enough that the
+    demand is never covered from the grid.
+    """
+    args = dict(
+        storage=Storage(
+            id=0, c_rate=1, volume=2, charge_efficiency=1, discharge_efficiency=1
+        ),
+        demand=pd.Series([0, 0, 1], index=idx_3),
+        solar_generation=pd.Series([2, 0, 0], index=idx_3),
+        supplier_prices=pd.Series([10, 10, 10], index=idx_3),
+        eeg_prices=pd.Series([0, 2, 0], index=idx_3),
+        wholesale_market_prices=pd.Series([0, 0, 0], index=idx_3),
+        community_market_prices=None,
+        storage_use_cases=["home", "eeg"],
+        my_location="aachen",
+        storage_location="aachen",
+        grid_fee_between_locations={"aachen": {"aachen": 0.05}},
+        is_rented_storage=True,
+        allow_pv_to_wholesale=False,
+        allow_wholesale_to_storage=False,
+        allow_storage_to_wholesale=False,
+    )
+    args.update(kwargs)
+    calc = EnergyCostCalculator(**args)
+    calc.optimize(solver="appsi_highs")
+    return calc
+
+
+def test_ECC_rented_pv_grid_fee_charges_only_the_home_sink():
+    # PV kept for the household comes back as its own withdrawal and is charged;
+    # PV routed through the storage to the eeg sink is sold on, so the fee is
+    # the buyer's and must not appear here
+    calc = _rented_pv_calc(rented_pv_grid_fee=0.07)
+    flows = calc.get_energy_flows()
+
+    assert np.isclose(flows["pv_to_storage_for_home"].sum(), 1.0)
+    assert np.isclose(flows["pv_to_storage_for_eeg"].sum(), 1.0)
+    assert np.isclose(flows["supplier_to_storage"].sum(), 0.0)
+    assert np.isclose(calc.get_cashflows()["grid_fees"], -0.07)
+
+
+def test_ECC_rented_pv_grid_fee_none_charges_every_use_case():
+    # the default keeps the previous behaviour: both kWh at the location rate
+    calc = _rented_pv_calc(rented_pv_grid_fee=None)
+    flows = calc.get_energy_flows()
+
+    assert np.isclose(flows["pv_to_storage_for_home"].sum(), 1.0)
+    assert np.isclose(flows["pv_to_storage_for_eeg"].sum(), 1.0)
+    assert np.isclose(calc.get_cashflows()["grid_fees"], -0.10)
+
+
+def test_ECC_rented_pv_grid_fee_spares_the_community_sink():
+    calc = EnergyCostCalculator(
+        storage=Storage(
+            id=0, c_rate=1, volume=1, charge_efficiency=1, discharge_efficiency=1
+        ),
+        demand=pd.Series([0, 0], index=idx_2),
+        solar_generation=pd.Series([1, 0], index=idx_2),
+        supplier_prices=pd.Series([100, 100], index=idx_2),
+        eeg_prices=pd.Series([0, 0], index=idx_2),
+        wholesale_market_prices=pd.Series([0, 0], index=idx_2),
+        community_market_prices={"aachen": pd.Series([0, 5], index=idx_2)},
+        storage_use_cases=["community"],
+        my_location="aachen",
+        storage_location="aachen",
+        is_rented_storage=True,
+        rented_pv_grid_fee=0.07,
+        allow_storage_to_community=True,
+        allow_community_market_arbitrage=False,
+        allow_community_to_home=False,
+        allow_community_to_storage=False,
+        allow_pv_to_community=False,
+        allow_pv_to_wholesale=True,
+    )
+    calc.optimize(solver="appsi_highs")
+    flows = calc.get_energy_flows()
+
+    assert np.isclose(flows["pv_to_storage_for_community"].sum(), 1.0)
+    assert np.isclose(flows["storage_to_community_aachen"].iloc[1], 1.0)
+    assert np.isclose(calc.get_cashflows()["grid_fees"], 0.0)
+
+
+def test_ECC_rented_pv_grid_fee_leaves_the_supplier_charge_untouched():
+    # both flows charge the same storage in the same timestep, each at its own
+    # rate: PV at rented_pv_grid_fee, the supplier at the location rate
+    calc = EnergyCostCalculator(
+        storage=Storage(
+            id=0, c_rate=1, volume=2, charge_efficiency=1, discharge_efficiency=1
+        ),
+        demand=pd.Series([0, 0, 2], index=idx_3),
+        solar_generation=pd.Series([1, 0, 0], index=idx_3),
+        supplier_prices=pd.Series([1, 10, 10], index=idx_3),
+        eeg_prices=pd.Series([0, 0, 0], index=idx_3),
+        wholesale_market_prices=pd.Series([0, 0, 0], index=idx_3),
+        community_market_prices=None,
+        storage_use_cases=["home"],
+        my_location="aachen",
+        storage_location="aachen",
+        grid_fee_between_locations={"aachen": {"aachen": 0.05}},
+        is_rented_storage=True,
+        rented_pv_grid_fee=0.07,
+        allow_pv_to_wholesale=False,
+        allow_wholesale_to_storage=False,
+        allow_storage_to_wholesale=False,
+    )
+    calc.optimize(solver="appsi_highs")
+    flows = calc.get_energy_flows()
+
+    assert np.isclose(flows["pv_to_storage_for_home"].sum(), 1.0)
+    assert np.isclose(flows["supplier_to_storage"].sum(), 1.0)
+    assert np.isclose(calc.get_cashflows()["grid_fees"], -(0.07 + 0.05))
+
+
+def test_ECC_rented_pv_grid_fee_only_applies_to_rented_storage():
+    calc = _rented_pv_calc(rented_pv_grid_fee=0.07, is_rented_storage=False)
+
+    assert np.isclose(calc.get_cashflows()["grid_fees"], 0.0)
+
+
+def test_ECC_rented_pv_grid_fee_without_home_use_case_is_zero():
+    calc = _rented_pv_calc(
+        rented_pv_grid_fee=0.07,
+        storage_use_cases=["eeg"],
+        demand=pd.Series([0, 0, 0], index=idx_3),
+    )
+    flows = calc.get_energy_flows()
+
+    assert np.isclose(flows["pv_to_storage_for_eeg"].sum(), 2.0)
+    assert np.isclose(calc.get_cashflows()["grid_fees"], 0.0)

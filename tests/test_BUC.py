@@ -2,6 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -683,3 +684,70 @@ def test_calculate_multiple_storage_worth_by_location():
     assert set(result_df["location"].unique()) == set(locations)
     # baseline + 2 storages for each location
     assert len(result_df) == len(locations) * len(storages_to_calc) + 1
+
+
+def test_calculate_storage_worth_passes_rented_pv_grid_fee_through():
+    # PV in the morning, demand in the evening: the rented storage shifts exactly
+    # 1 kWh for home use, so the fee has to show up one to one in the worth
+    idx = pd.date_range("2025-01-01", freq="h", periods=3)
+    common = dict(
+        baseline_storage=Storage(
+            id=0, c_rate=1, volume=0, charge_efficiency=1, discharge_efficiency=1
+        ),
+        storage_to_calculate=Storage(
+            id=1, c_rate=1, volume=1, charge_efficiency=1, discharge_efficiency=1
+        ),
+        demand=pd.Series([0, 0, 1], index=idx),
+        solar_generation=pd.Series([1, 0, 0], index=idx),
+        supplier_prices=pd.Series([0.32, 0.32, 0.32], index=idx),
+        eeg_prices=pd.Series([0.08, 0.08, 0.08], index=idx),
+        wholesale_market_prices=pd.Series([0, 0, 0], index=idx),
+        community_market_prices=None,
+        storage_use_cases=["home", "eeg"],
+        my_location="aachen",
+        storage_location="aachen",
+        is_rented_storage=True,
+        allow_pv_to_wholesale=False,
+        allow_wholesale_to_storage=False,
+        allow_storage_to_wholesale=False,
+        solver="appsi_highs",
+    )
+
+    without_fee = calculate_storage_worth(rented_pv_grid_fee=None, **common)
+    with_fee = calculate_storage_worth(rented_pv_grid_fee=0.07, **common)
+
+    assert np.isclose(without_fee - with_fee, 0.07, atol=1e-3)
+
+
+def test_calculate_multiple_storage_worth_passes_rented_pv_grid_fee_through():
+    idx = pd.date_range("2025-01-01", freq="h", periods=3)
+    common = dict(
+        baseline_storage=Storage(
+            id=0, c_rate=1, volume=0, charge_efficiency=1, discharge_efficiency=1
+        ),
+        storages_to_calculate=[
+            Storage(
+                id=1, c_rate=1, volume=1, charge_efficiency=1, discharge_efficiency=1
+            )
+        ],
+        demand=pd.Series([0, 0, 1], index=idx),
+        solar_generation=pd.Series([1, 0, 0], index=idx),
+        supplier_prices=pd.Series([0.32, 0.32, 0.32], index=idx),
+        eeg_prices=pd.Series([0.08, 0.08, 0.08], index=idx),
+        wholesale_market_prices=pd.Series([0, 0, 0], index=idx),
+        community_market_prices=None,
+        storage_use_cases=["home", "eeg"],
+        my_location="aachen",
+        storage_location="aachen",
+        is_rented_storage=True,
+        allow_pv_to_wholesale=False,
+        allow_wholesale_to_storage=False,
+        allow_storage_to_wholesale=False,
+        solver="appsi_highs",
+    )
+
+    without_fee = calculate_multiple_storage_worth(rented_pv_grid_fee=None, **common)
+    with_fee = calculate_multiple_storage_worth(rented_pv_grid_fee=0.07, **common)
+
+    difference = without_fee["worth"].iloc[1] - with_fee["worth"].iloc[1]
+    assert np.isclose(difference, 0.07, atol=1e-3)

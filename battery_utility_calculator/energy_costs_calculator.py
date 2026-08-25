@@ -71,6 +71,7 @@ class EnergyCostCalculator:
         allow_wholesale_to_storage: bool = True,
         allow_storage_to_wholesale: bool = True,
         wholesale_fee: float = 0.3,
+        rented_pv_grid_fee: float | None = None,
         my_location: str = "aachen",
         grid_fee_between_locations: dict[str, dict[str, float]]
         | None = DEFAULT_GRID_FEE_BETWEEN_LOCATIONS,
@@ -100,6 +101,7 @@ class EnergyCostCalculator:
             allow_community_to_home (bool): Direct community import to home without storage.
             allow_pv_to_community (bool): Direct PV export to the community market.
             wholesale_fee (float): Percentage of earned wholesale money that has to be given away (0.0 to 1.0). Default is 0.3.
+            rented_pv_grid_fee (float | None): Grid fee in EUR/kWh charged on PV charged into a rented storage for later home use (``pv_to_storage[t, "home"]``), applied only when ``is_rented_storage`` is True. ``None`` keeps the previous behaviour, which charges every ``pv_to_storage`` use case at ``grid_fee_rate(my_location, storage_location)``. Setting a value restricts the charge to the home use case, where the energy comes back as the household's own withdrawal, and decouples it from the ``supplier_to_storage`` rate. Default is None.
             my_location (str): Location of the prosumer. Must be a key in ``grid_fee_between_locations``. Default is "aachen".
             grid_fee_between_locations (dict[str, dict[str, float]]): Grid fees in EUR/kWh for energy transferred between locations. Default is DEFAULT_GRID_FEE_BETWEEN_LOCATIONS.
             storage_location (str | None): Location where the storage is located. Defaults to ``my_location``.
@@ -137,6 +139,7 @@ class EnergyCostCalculator:
         self.allow_community_to_storage = allow_community_to_storage
         self.allow_community_market_arbitrage = allow_community_market_arbitrage
         self.wholesale_fee = wholesale_fee
+        self.rented_pv_grid_fee = rented_pv_grid_fee
         self.grid_fee_between_locations = self.__prepare_grid_fee_between_locations__(
             grid_fee_between_locations
         )
@@ -962,16 +965,34 @@ class EnergyCostCalculator:
 
         if self.rented_storage:
             # extra grid fee for PV -> storage
-            pv_charge = sum(
-                self.__get_value__(self.model.pv_to_storage[timestep, use], use_values)
-                for timestep in self.timesteps
-                for use in self.storage_use_cases
-            )
-            grid_fee = (
-                grid_fee
-                + self.grid_fee_rate(self.my_location, self.storage_location)
-                * pv_charge
-            )
+            if self.rented_pv_grid_fee is None:
+                # every use case at the location rate, which is what the flows
+                # were charged before rented_pv_grid_fee existed
+                pv_charge = sum(
+                    self.__get_value__(
+                        self.model.pv_to_storage[timestep, use], use_values
+                    )
+                    for timestep in self.timesteps
+                    for use in self.storage_use_cases
+                )
+                pv_rate = self.grid_fee_rate(self.my_location, self.storage_location)
+            elif "home" in self.storage_use_cases:
+                # only the home use case comes back as the household's own
+                # withdrawal; PV routed to eeg or community is sold on, and its
+                # grid fee is the buyer's
+                pv_charge = sum(
+                    self.__get_value__(
+                        self.model.pv_to_storage[timestep, "home"], use_values
+                    )
+                    for timestep in self.timesteps
+                )
+                pv_rate = float(self.rented_pv_grid_fee)
+            else:
+                # without the home use case there is no such flow to charge
+                pv_charge = 0.0
+                pv_rate = 0.0
+
+            grid_fee = grid_fee + pv_rate * pv_charge
 
         # community market to storage flows
         for location in self.community_market_prices:
